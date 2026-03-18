@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastie-py"
+version = "0.0.1a1"
+authors = [
+  { name="Phuong Nha Nguyen", email="phuongnhanguyen.dev@gmail.com" },
+]
+description = "Fastie Framework - A Laravel Artisan-like CLI and DI-based framework for FastAPI"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "python-dotenv",
+    "sqlalchemy",
+    "pymysql",
+    "alembic",
+    "pyjwt",
+    "passlib[bcrypt]",
+    "email-validator",
+    "mako",
+    "click",
+    "rich",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nphuonha2101/fastie"
+"Bug Tracker" = "https://github.com/nphuonha2101/fastie/issues"
+
+[project.scripts]
+fastie = "fastie.cli:cli"
+
+[tool.setuptools]
+packages = ["fastie"]
+
+[tool.setuptools.package-data]
+fastie = ["templates/**/*.mako", "stubs/**/*"]
