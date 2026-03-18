@@ -30,7 +30,7 @@ class ValidationMiddleware(AbstractMiddleware):
             if content_length > self.max_request_size:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Request quá lớn. Tối đa {self.max_request_size // (1024*1024)}MB",
+                    detail=f"Request too large. Maximum {self.max_request_size // (1024*1024)}MB",
                     headers={"X-Max-Size": str(self.max_request_size)}
                 )
         
@@ -40,7 +40,7 @@ class ValidationMiddleware(AbstractMiddleware):
             if content_type and content_type not in self.allowed_content_types:
                 raise HTTPException(
                     status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=f"Content-Type '{content_type}' không được hỗ trợ",
+                    detail=f"Content-Type '{content_type}' is not supported",
                     headers={
                         "X-Allowed-Content-Types": ", ".join(self.allowed_content_types)
                     }
@@ -70,7 +70,7 @@ class ValidationMiddleware(AbstractMiddleware):
             except json.JSONDecodeError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Request body không phải JSON hợp lệ"
+                    detail="Request body is not a valid JSON"
                 )
         
         # 5. Check suspicious patterns (basic security)
@@ -81,7 +81,7 @@ class ValidationMiddleware(AbstractMiddleware):
             if pattern.lower() in request_data.lower():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Request chứa nội dung không hợp lệ",
+                    detail="Request contains invalid or suspicious content",
                     headers={"X-Security-Check": "failed"}
                 )
         

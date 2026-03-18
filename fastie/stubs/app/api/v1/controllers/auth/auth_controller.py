@@ -11,7 +11,7 @@ class AuthController(BaseController, ABC):
 
     def __init__(self):
         super().__init__()
-        self.secret_key = "your-secret-key"  # Nên lấy từ environment
+        self.secret_key = "your-secret-key"  # Should be retrieved from environment
         self.algorithm = "HS256"
 
     def define_routes(self):
@@ -21,9 +21,9 @@ class AuthController(BaseController, ABC):
 
     def login(self, request: Request):
         """
-        Handles user login và tạo JWT token.
+        Handles user login and creates JWT token.
         :param request: FastAPI Request object
-        :return: Success message với JWT token.
+        :return: Success message with JWT token.
         """
         user_data = {
             "user_id": "123",
@@ -66,7 +66,7 @@ class AuthController(BaseController, ABC):
         
         user_id = request.state.user_id
         
-        # Simulated user data - thực tế sẽ query từ database
+        # Simulated user data - in reality, this would query from the database
         user_profile = {
             "user_id": user_id,
             "username": "demo_user",
@@ -81,11 +81,11 @@ class AuthController(BaseController, ABC):
 
     def greet(self, request: Request):
         """
-        Handles greeting với thông tin từ middleware.
+        Handles greeting with information from middleware.
         :param request: FastAPI Request object
-        :return: Greeting message với middleware data.
+        :return: Greeting message with middleware data.
         """
-        # Lấy thông tin từ middleware
+        # Get information from middleware
         client_ip = request.client.host if request.client else "unknown"
         
         middleware_data = {}

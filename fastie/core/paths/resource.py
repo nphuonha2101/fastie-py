@@ -4,9 +4,16 @@ from pathlib import Path
 def __resources_path__() -> Path:
     """
     Returns the path to the resources directory.
-    :return: Path object pointing to the resources' directory.
+    Priority:
+    1. Current Working Directory (Project root)
+    2. Framework root
     """
-    # Need to go up 4 levels: paths -> core -> app -> root
+    # Try project root first (CWD)
+    project_resources = Path.cwd() / "resources"
+    if project_resources.exists():
+        return project_resources
+        
+    # Fallback to framework root
     base_dir = Path(__file__).resolve().parent.parent.parent.parent
     resources_path = base_dir / "resources"
     return resources_path

@@ -18,7 +18,7 @@ class CachingMiddleware(AbstractMiddleware):
         self.cacheable_methods = ["GET"]
         self.cacheable_status_codes = [200, 201]
         
-        # Patterns không cache
+        # No-cache patterns
         self.no_cache_patterns = [
             "/auth/",  # Auth endpoints
             "/admin/", # Admin endpoints  
@@ -27,7 +27,7 @@ class CachingMiddleware(AbstractMiddleware):
 
     def _generate_cache_key(self, request: Request) -> str:
         """
-        Tạo cache key từ request
+        Generate cache key from request
         """
         # Generate cache key from request
         key_data = {
@@ -170,9 +170,9 @@ class CachingMiddleware(AbstractMiddleware):
             
             # Custom TTL based on endpoint
             if "/users/" in request.url.path:
-                ttl = 600  # 10 minutes cho user data
+                ttl = 600  # 10 minutes for user data
             elif "/posts/" in request.url.path:
-                ttl = 1800  # 30 minutes cho posts
+                ttl = 1800  # 30 minutes for posts
             
             self._store_in_cache(cache_key, response_data, ttl)
     

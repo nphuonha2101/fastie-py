@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 from fastie.infrastructures.database import Base
 
-# Import all models để Alembic có thể auto-detect changes
+# Import all models for Alembic auto-detection
 from app.models import *  # This imports all models
 from fastie.models.abstract_model import AbstractModel
 

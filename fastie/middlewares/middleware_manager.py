@@ -25,20 +25,20 @@ _MIDDLEWARE_CLASSES = [
 
 
 class MiddlewareGroup(Enum):
-    """Định nghĩa các nhóm middleware"""
+    """Definition of middleware groups"""
     BASIC = "basic"                    # CORS, Logging
     SECURITY = "security"              # Auth, Rate Limiting
-    FULL = "full"                      # Tất cả middleware
-    PUBLIC = "public"                  # Cho endpoints không cần auth
-    PROTECTED = "protected"            # Cho endpoints cần auth
-    HIGH_PERFORMANCE = "high_performance"  # Với caching
-    STRICT_VALIDATION = "strict_validation"  # Với validation nghiêm ngặt
-    API_VERSIONED = "api_versioned"    # Với versioning support
+    FULL = "full"                      # All middlewares
+    PUBLIC = "public"                  # For endpoints not requiring auth
+    PROTECTED = "protected"            # For endpoints requiring auth
+    HIGH_PERFORMANCE = "high_performance"  # With caching
+    STRICT_VALIDATION = "strict_validation"  # With strict validation
+    API_VERSIONED = "api_versioned"    # With versioning support
 
 
 class MiddlewareManager:
     """
-    Quản lý và cung cấp middleware theo nhóm hoặc tùy chỉnh
+    Manages and provides middleware by group or custom selection
     """
     
     def __init__(self):
@@ -76,18 +76,18 @@ class MiddlewareManager:
             MiddlewareGroup.HIGH_PERFORMANCE: [
                 CORSMiddleware,
                 LoggingMiddleware,
-                CachingMiddleware,  # Thêm caching
+                CachingMiddleware,  # Add caching
                 RateLimitMiddleware
             ],
             MiddlewareGroup.STRICT_VALIDATION: [
                 CORSMiddleware,
-                ValidationMiddleware,  # Validation nghiêm ngặt
+                ValidationMiddleware,  # Strict validation
                 LoggingMiddleware,
                 RateLimitMiddleware,
                 AuthMiddleware
             ],
             MiddlewareGroup.API_VERSIONED: [
-                VersioningMiddleware,  # Version checking đầu tiên
+                VersioningMiddleware,  # Version checking first
                 CORSMiddleware,
                 LoggingMiddleware,
                 RateLimitMiddleware
@@ -96,7 +96,7 @@ class MiddlewareManager:
 
     def _ensure_middleware_registered(self):
         """
-        Đảm bảo tất cả middleware đã được đăng ký vào registry
+        Ensures all middleware are registered in the registry
         """
         for middleware_cls in _MIDDLEWARE_CLASSES:
             # All middleware should be in the registry after load_components()
@@ -109,41 +109,41 @@ class MiddlewareManager:
 
     def get_middleware_group(self, group: MiddlewareGroup) -> List[Any]:
         """
-        Lấy danh sách middleware instances theo nhóm
+        Gets a list of middleware instances by group
         """
         middleware_classes = self._middleware_groups.get(group, [])
         instances = []
         
         for cls in middleware_classes:
             try:
-                # Thử resolve từ registry trước
+                # Try resolving from registry first
                 instance = self.registry.resolve(cls)
                 instances.append(instance)
             except ValueError:
-                # Nếu không tìm thấy, tạo instance trực tiếp
+                # If not found, create instance directly
                 instance = cls()
                 instances.append(instance)
-                # Đăng ký vào registry cho lần sau
+                # Register in registry for future use
                 self.registry.register(cls, instance)
         
         return instances
 
     def get_custom_middlewares(self, middleware_classes: List[Type]) -> List[Any]:
         """
-        Lấy danh sách middleware instances tùy chỉnh
+        Gets a list of custom middleware instances
         """
         instances = []
         
         for cls in middleware_classes:
             try:
-                # Thử resolve từ registry trước
+                # Try resolving from registry first
                 instance = self.registry.resolve(cls)
                 instances.append(instance)
             except ValueError:
-                # Nếu không tìm thấy, tạo instance trực tiếp
+                # If not found, create instance directly
                 instance = cls()
                 instances.append(instance)
-                # Đăng ký vào registry cho lần sau
+                # Register in registry for future use
                 self.registry.register(cls, instance)
         
         return instances
@@ -152,11 +152,11 @@ class MiddlewareManager:
                                 route_type: str = "public", 
                                 additional_middlewares: List[Type] = None) -> List[Any]:
         """
-        Lấy middleware phù hợp cho loại route cụ thể
+        Gets suitable middleware for a specific route type
         
         Args:
             route_type: "public", "protected", "admin", etc.
-            additional_middlewares: Thêm middleware tùy chỉnh
+            additional_middlewares: Optional additional custom middlewares
         """
         base_middlewares = []
         
@@ -165,13 +165,13 @@ class MiddlewareManager:
         elif route_type == "protected":
             base_middlewares = self.get_middleware_group(MiddlewareGroup.PROTECTED)
         elif route_type == "admin":
-            # Admin routes có thêm security
+            # Admin routes have extra security
             base_middlewares = self.get_middleware_group(MiddlewareGroup.FULL)
         else:
             # Default: basic middlewares
             base_middlewares = self.get_middleware_group(MiddlewareGroup.BASIC)
         
-        # Thêm middleware tùy chỉnh nếu có
+        # Add custom middlewares if requested
         if additional_middlewares:
             additional = self.get_custom_middlewares(additional_middlewares)
             base_middlewares.extend(additional)
@@ -184,15 +184,15 @@ _middleware_manager = None
 
 def get_middleware_manager() -> MiddlewareManager:
     """
-    Lấy singleton instance của MiddlewareManager
-    Đảm bảo tất cả middleware được đăng ký đúng cách
+    Returns the singleton instance of MiddlewareManager
+    Ensures all middleware are correctly registered
     """
     global _middleware_manager
     if _middleware_manager is None:
         try:
             _middleware_manager = MiddlewareManager()
         except Exception as e:
-            # Fallback: đảm bảo middleware manager luôn khả dụng
+            # Fallback: ensure middleware manager is always available
             print(f"Warning: Error creating MiddlewareManager: {e}")
             _middleware_manager = MiddlewareManager()
     

@@ -24,7 +24,7 @@ class LoggingMiddleware(AbstractMiddleware):
 
     async def handle(self, request: Request, credentials: HTTPAuthorizationCredentials = None):
         """
-        Log thông tin request
+        Log request information
         """
         start_time = time.time()
         

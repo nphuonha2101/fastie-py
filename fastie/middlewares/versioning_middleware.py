@@ -44,7 +44,7 @@ class VersioningMiddleware(AbstractMiddleware):
         if api_version not in self.supported_versions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"API version '{api_version}' không được hỗ trợ. Versions hỗ trợ: {', '.join(self.supported_versions)}",
+                detail=f"API version '{api_version}' is not supported. Supported versions: {', '.join(self.supported_versions)}",
                 headers={"X-Supported-Versions": ", ".join(self.supported_versions)}
             )
         

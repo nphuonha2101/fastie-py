@@ -21,6 +21,9 @@ except ImportError:
 @click.version_option(version='0.0.1a1', prog_name='Fastie CLI')
 def cli():
     """Fastie Framework CLI - Laravel Artisan-like command line interface"""
+    # Add current directory to path so it can find 'app'
+    sys.path.append(os.getcwd())
+    
     if len(sys.argv) == 1:
         fastie_console.print_banner()
 

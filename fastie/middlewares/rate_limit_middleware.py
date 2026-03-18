@@ -36,7 +36,7 @@ class RateLimitMiddleware(AbstractMiddleware):
         if len(client_requests) >= self.max_requests:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Quá nhiều requests. Giới hạn {self.max_requests} requests/{self.time_window}s",
+                detail=f"Too many requests. Limit {self.max_requests} requests/{self.time_window}s",
                 headers={
                     "X-RateLimit-Limit": str(self.max_requests),
                     "X-RateLimit-Remaining": "0",

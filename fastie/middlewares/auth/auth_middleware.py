@@ -20,7 +20,7 @@ class AuthMiddleware(AbstractMiddleware):
         if not credentials:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token không được cung cấp",
+                detail="Token not provided",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -36,7 +36,7 @@ class AuthMiddleware(AbstractMiddleware):
             if user_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token không hợp lệ",
+                    detail="Invalid token",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             
@@ -47,12 +47,12 @@ class AuthMiddleware(AbstractMiddleware):
         except jwt.ExpiredSignatureError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token đã hết hạn",
+                detail="Token expired",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         except jwt.JWTError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token không hợp lệ",
+                detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
