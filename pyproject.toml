@@ -34,8 +34,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/nphuonha2101/fastie"
-"Bug Tracker" = "https://github.com/nphuonha2101/fastie/issues"
+"Homepage" = "https://github.com/nphuonha2101/fastie-py"
+"Bug Tracker" = "https://github.com/nphuonha2101/fastie-py/issues"
 
 [project.scripts]
 fastie = "fastie.cli:cli"
