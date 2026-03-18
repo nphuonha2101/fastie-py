@@ -17,7 +17,12 @@ except ImportError:
     fastie_console.warning("Fastie templates not available - falling back to inline templates")
 
 
-@click.group(invoke_without_command=True)
+class FastieGroup(click.Group):
+    def format_help(self, ctx, formatter):
+        fastie_console.print_banner()
+        super().format_help(ctx, formatter)
+
+@click.group(cls=FastieGroup, invoke_without_command=True)
 @click.version_option(version='0.0.1a1', prog_name='Fastie CLI')
 def cli():
     """Fastie Framework CLI - Laravel Artisan-like command line interface"""
