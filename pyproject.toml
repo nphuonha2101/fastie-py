@@ -31,6 +31,7 @@ dependencies = [
     "mako",
     "click",
     "rich",
+    "dynaconf",
 ]
 
 [project.urls]

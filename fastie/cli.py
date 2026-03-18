@@ -959,7 +959,7 @@ __all__ = ['AbstractModel', '{class_name}']
         return True
         
     except Exception as e:
-        click.echo(f"❌ Error updating __init__.py: {str(e)}")
+        click.echo(f"Error updating __init__.py: {str(e)}")
         return False
 
 
