@@ -16,9 +16,14 @@ class DatabaseInfrastructure:
             if not self.database_url:
                 raise ValueError("DATABASE_URL is not set in .env")
 
-            self.engine = create_engine(self.database_url, pool_pre_ping=True)
+            # Special handling for SQLite
+            engine_args = {"pool_pre_ping": True}
+            if self.database_url.startswith("sqlite"):
+                engine_args["connect_args"] = {"check_same_thread": False}
+
+            self.engine = create_engine(self.database_url, **engine_args)
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-            logger.info("Database engine created successfully")
+            logger.info(f"Database engine created successfully for {self.database_url.split(':', 1)[0]}")
 
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
