@@ -49,7 +49,6 @@ class MiddlewareManager:
         
         self._middleware_groups = {
             MiddlewareGroup.BASIC: [
-                CORSMiddleware,
                 LoggingMiddleware
             ],
             MiddlewareGroup.SECURITY: [
@@ -57,30 +56,24 @@ class MiddlewareManager:
                 RateLimitMiddleware
             ],
             MiddlewareGroup.PUBLIC: [
-                CORSMiddleware,
                 LoggingMiddleware,
                 RateLimitMiddleware
             ],
             MiddlewareGroup.PROTECTED: [
-                CORSMiddleware,
                 LoggingMiddleware,
                 RateLimitMiddleware,
                 AuthMiddleware
             ],
             MiddlewareGroup.FULL: [
-                CORSMiddleware,
                 LoggingMiddleware,
                 RateLimitMiddleware,
                 AuthMiddleware
             ],
             MiddlewareGroup.HIGH_PERFORMANCE: [
-                CORSMiddleware,
                 LoggingMiddleware,
-                CachingMiddleware,  # Add caching
                 RateLimitMiddleware
             ],
             MiddlewareGroup.STRICT_VALIDATION: [
-                CORSMiddleware,
                 ValidationMiddleware,  # Strict validation
                 LoggingMiddleware,
                 RateLimitMiddleware,
@@ -88,7 +81,6 @@ class MiddlewareManager:
             ],
             MiddlewareGroup.API_VERSIONED: [
                 VersioningMiddleware,  # Version checking first
-                CORSMiddleware,
                 LoggingMiddleware,
                 RateLimitMiddleware
             ]
@@ -189,11 +181,6 @@ def get_middleware_manager() -> MiddlewareManager:
     """
     global _middleware_manager
     if _middleware_manager is None:
-        try:
-            _middleware_manager = MiddlewareManager()
-        except Exception as e:
-            # Fallback: ensure middleware manager is always available
-            print(f"Warning: Error creating MiddlewareManager: {e}")
-            _middleware_manager = MiddlewareManager()
+        _middleware_manager = MiddlewareManager()
     
-    return _middleware_manager 
+    return _middleware_manager

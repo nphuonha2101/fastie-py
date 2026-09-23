@@ -9,16 +9,14 @@ sqlalchemy
 pymysql
 psycopg2-binary
 alembic
+redis>=5,<6
 
 # Authentication & Security  
 pyjwt
-passlib[bcrypt]
+bcrypt>=4,<5
 email-validator
 
 # Template Engine
 mako
 
-# Optional: Advanced Caching (uncomment if needed)
-# redis
-# aioredis
-
+# Optional: application caching can use the installed redis client.

@@ -1,4 +1,5 @@
 import datetime
+from contextvars import ContextVar
 from typing import TypeVar, Generic, Optional, List, Literal
 
 from sqlalchemy.exc import IntegrityError
@@ -15,14 +16,23 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
 
     def __init__(self, model_class):
         self.model_class = model_class
-        self.session: Optional[Session] = None
+        self._session: ContextVar[Optional[Session]] = ContextVar(
+            f"repository_session_{id(self)}", default=None
+        )
+
+    @property
+    def session(self) -> Session:
+        session = self._session.get()
+        if session is None:
+            raise RuntimeError("A database session must be assigned before repository use")
+        return session
 
     def set_session(self, session: Session):
         """
         Set the SQLAlchemy session for database operations.
         This method should be called before any database operations.
         """
-        self.session = session
+        self._session.set(session)
 
 
     def get_all(
@@ -34,6 +44,11 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
             with_trash: bool = False,
             eager_relations: Optional[List[str]] = None,
     ) -> List[T]:
+        if skip < 0:
+            raise ValueError("skip must be greater than or equal to zero")
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+
         query = self.session.query(self.model_class)
 
         if eager_relations:
@@ -44,6 +59,8 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
             query = query.filter(self.model_class.deleted_at.is_(None))
 
         if order_by:
+            if order_by not in inspect(self.model_class).columns:
+                raise ValueError(f"Unsupported order_by field: {order_by}")
             column = getattr(self.model_class, order_by)
             query = query.order_by(desc(column) if order_direction == "desc" else asc(column))
 
@@ -82,11 +99,11 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
             valid_keys = {c.key for c in mapper.columns}
             item_data = {k: v for k, v in raw_data.items() if k in valid_keys}
 
-            # Create and persist the item
-            with self.session.begin():
-                db_item = self.model_class(**item_data)
-                self.session.add(db_item)
-                self.session.flush()
+            # The surrounding DbContext owns the transaction. This keeps
+            # multi-repository service operations atomic.
+            db_item = self.model_class(**item_data)
+            self.session.add(db_item)
+            self.session.flush()
 
             self.session.refresh(db_item)
             return db_item
@@ -117,10 +134,11 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
             valid_keys = {c.key for c in mapper.columns}
             item_data = {k: v for k, v in raw_data.items() if k in valid_keys}
 
-            # Update the item
-            with self.session.begin():
-                for key, value in item_data.items():
-                    setattr(db_item, key, value)
+            # The surrounding DbContext owns the transaction. This keeps
+            # multi-repository service operations atomic.
+            for key, value in item_data.items():
+                setattr(db_item, key, value)
+            self.session.flush()
 
             self.session.refresh(db_item)
             return db_item
@@ -137,8 +155,7 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
         if db_item is None:
             raise ValueError(f"Item with id {id} not found")
         db_item.deleted_at = datetime.datetime.now()
-        self.session.commit()
-        pass
+        self.session.flush()
 
     def force_delete(self, id: int) -> None:
         db_item = self.get_by_id(id, with_trash=True)
@@ -146,7 +163,7 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
             raise ValueError(f"Item with id {id} not found")
 
         self.session.delete(db_item)
-        self.session.commit()
+        self.session.flush()
 
     def restore(self, id: int) -> T:
         db_item = self.get_by_id(id, with_trash=True)
@@ -155,7 +172,7 @@ class Repository(IRepository[T, TCreate, TUpdate], Generic[T, TCreate, TUpdate])
 
         if hasattr(db_item, 'deleted_at'):
             db_item.deleted_at = None
-            self.session.commit()
+            self.session.flush()
             self.session.refresh(db_item)
         
         return db_item

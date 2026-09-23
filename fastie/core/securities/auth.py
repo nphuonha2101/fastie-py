@@ -13,6 +13,7 @@ class Auth:
         :param credentials: A dictionary containing the user's credentials. Example: { "email": "example.com", "password": "your_password" }
         :return: Dictionary with user data if authentication succeeds, None otherwise
         """
+        credentials = dict(credentials)
         password = credentials.pop("password", None)
         if password is None:
             raise ValueError("Password field is required in credentials")
@@ -24,6 +25,11 @@ class Auth:
                     query = query.filter(getattr(model, field) == value)
                 else:
                     raise AttributeError(f"{model.__name__} has no attribute '{field}'")
+
+            if hasattr(model, "is_active"):
+                query = query.filter(model.is_active.is_(True))
+            if hasattr(model, "deleted_at"):
+                query = query.filter(model.deleted_at.is_(None))
 
             user = query.first()
             if not user or not __verify_password__(password, user.password):
@@ -57,17 +63,23 @@ class Auth:
         if not token:
             raise ValueError("Token must be provided for decoding")
 
+        payload = Jwt.decode_token(token)
+        user_id = payload.get('sub')
+        if user_id is None:
+            raise ValueError("Token subject is missing")
+
         try:
             with DbContext() as db:
-                query = db.session.query(model)
-                if hasattr(model, "token"):
-                    query = query.filter(getattr(model, "token") == token)
-                else:
-                    query = query.filter(getattr(model, "id") == token)
+                query = db.session.query(model).filter(model.id == int(user_id))
+                if hasattr(model, "is_active"):
+                    query = query.filter(model.is_active.is_(True))
+                if hasattr(model, "deleted_at"):
+                    query = query.filter(model.deleted_at.is_(None))
 
                 user = query.first()
 
                 if isinstance(user, model) and hasattr(user, 'get_response_model'):
                     return user.get_response_model().model_validate(user)
-        except Exception as e:
-            raise ValueError(f"Error decoding token: {str(e)}")
+                return None
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid token subject") from exc

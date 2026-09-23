@@ -1,2 +1,1 @@
-JWT_SECRET="jdsfhjshfjshfs"
 JWT_ALGORITHM="HS256"

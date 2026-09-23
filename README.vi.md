@@ -4,7 +4,7 @@
 
 Tiếng Anh: [English](README.md)
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -47,8 +47,34 @@ cd my_project
 
 ### Database (db)
 - `fastie db migrate`: Thực thi migration.
-- `fastie db rollback`: Quay lại phiên bản migration trước.
+- `fastie db rollback`: Quay lại migration trước ở môi trường development; production cần `--force`.
+- `fastie db reset`: Xóa và dựng lại database, chỉ cho development.
 - `fastie db status`: Xem trạng thái database.
+- `fastie db check`: Kiểm tra migration graph chỉ có một head và schema không lệch model.
+
+### Quy trình migration
+
+Mỗi migration cần được tạo, review và kiểm tra trước khi áp dụng:
+
+```bash
+fastie make migration add_profile_fields --auto
+fastie db check
+fastie db migrate
+```
+
+Fastie yêu cầu migration có một head duy nhất. Nếu các branch song song tạo nhiều head,
+cần merge rõ ràng trước khi migrate hoặc tạo migration tiếp theo:
+
+```bash
+alembic merge -m "merge migration heads" <head-one> <head-two>
+fastie db check
+```
+
+Production nên chạy `fastie db migrate` như một bước riêng trong deploy trước khi rollout ứng dụng.
+Ứng dụng không tự chạy migration khi startup; rollback/reset destructive không nằm trong workflow production.
+
+Trong production, cần cấu hình `JWT_SECRET` là chuỗi ngẫu nhiên tối thiểu 32 ký tự, khai báo rõ
+`CORS_ALLOWED_ORIGINS`, và cung cấp `REDIS_URL` để rate limit được chia sẻ giữa các worker.
 
 ## Ví dụ sử dụng
 

@@ -1,4 +1,5 @@
 from abc import abstractmethod, ABC
+import logging
 
 from fastapi import APIRouter
 from fastapi.encoders import jsonable_encoder
@@ -11,6 +12,7 @@ class BaseController(ABC):
     def __init__(self):
         self.router = APIRouter()
         self.registry = get_registry()
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def define_routes(self):
@@ -50,3 +52,11 @@ class BaseController(ABC):
             "data": None
         }
         return JSONResponse(status_code=status_code, content=content)
+
+    def internal_error(self, exception: Exception):
+        """Log the exception while returning a safe public error message."""
+        self.logger.error(
+            "Unhandled controller exception",
+            exc_info=(type(exception), exception, exception.__traceback__),
+        )
+        return self.error(message="Internal server error", status_code=500)

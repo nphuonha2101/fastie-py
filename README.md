@@ -4,7 +4,7 @@
 
 Vietnamese: [Tiếng Việt](README.vi.md)
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -47,8 +47,35 @@ cd my_project
 
 ### Database Management (db)
 - `fastie db migrate`: Run pending migrations.
-- `fastie db rollback`: Rollback the last migration.
+- `fastie db rollback`: Rollback the last migration in development; production requires `--force`.
+- `fastie db reset`: Rebuild the database in development only.
 - `fastie db status`: Check current migration status.
+- `fastie db check`: Validate that the migration graph has one head and the database matches the models.
+
+### Migration workflow
+
+Create and review every migration before applying it:
+
+```bash
+fastie make migration add_profile_fields --auto
+fastie db check
+fastie db migrate
+```
+
+Fastie enforces one migration head. If parallel branches create multiple heads, resolve them explicitly
+before applying or creating another migration:
+
+```bash
+alembic merge -m "merge migration heads" <head-one> <head-two>
+fastie db check
+```
+
+Production deployments should run `fastie db migrate` as a separate deploy step before rolling out the
+application. The application does not run migrations during startup, and destructive rollback/reset
+operations are not part of the production workflow.
+
+For production, configure `JWT_SECRET` with a random value of at least 32 characters, set
+`CORS_ALLOWED_ORIGINS` explicitly, and provide `REDIS_URL` for shared rate limiting across workers.
 
 ## Usage Examples
 

@@ -1,4 +1,7 @@
+import os
+
 from fastapi import APIRouter, FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware as FastAPICORSMiddleware
 from typing import List, Type, Callable, Union
 
 from fastie.middlewares.middleware_manager import get_middleware_manager, MiddlewareGroup
@@ -13,9 +16,28 @@ class RouteRegistrar:
     """
     def __init__(self, app: FastAPI, prefix: str = "/api/v1"):
         self.app = app
+        self._configure_cors()
         self.api_router = APIRouter(prefix=prefix)
         self.registry = get_registry()
         self.middleware_manager = get_middleware_manager()
+
+    def _configure_cors(self):
+        """Install FastAPI's response middleware once for the application."""
+        if getattr(self.app.state, "fastie_cors_configured", False):
+            return
+
+        configured_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+        allowed_origins = [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+        allow_all_origins = "*" in allowed_origins
+
+        self.app.add_middleware(
+            FastAPICORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=not allow_all_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        self.app.state.fastie_cors_configured = True
 
     def register(
             self,

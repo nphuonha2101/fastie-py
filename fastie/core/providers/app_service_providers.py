@@ -1,8 +1,11 @@
 import importlib
+import logging
 import os
 import pkgutil
 from pathlib import Path
 from fastie.core.decorators.di import load_components
+
+logger = logging.getLogger(__name__)
 
 def discover_components():
     """
@@ -20,18 +23,21 @@ def discover_components():
                     importlib.import_module(full_name)
                     if is_pkg:
                         scan_package(full_name)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    logger.exception("Failed to import component module %s", full_name)
+                    raise RuntimeError(f"Failed to import component module {full_name}") from exc
+        except Exception as exc:
+            logger.exception("Failed to import package %s", package_name)
+            raise RuntimeError(f"Failed to import package {package_name}") from exc
 
     # Start the recursive scan from both framework and application packages
     for base_package in ["fastie", "app"]:
         try:
             importlib.import_module(base_package)
             scan_package(base_package)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Failed to import base package %s", base_package)
+            raise RuntimeError(f"Failed to import base package {base_package}") from exc
 
 def discover_submodules(package_name):
     """Recursively import all submodules of a package."""
@@ -44,8 +50,9 @@ def discover_submodules(package_name):
             importlib.import_module(full_name)
             if is_pkg:
                 discover_submodules(full_name)
-        except Exception as e:
-            print(f"Error importing {full_name}: {e}")
+        except Exception as exc:
+            logger.exception("Error importing %s", full_name)
+            raise RuntimeError(f"Error importing {full_name}") from exc
 
 def initialize_application():
     """Initialize the application components."""

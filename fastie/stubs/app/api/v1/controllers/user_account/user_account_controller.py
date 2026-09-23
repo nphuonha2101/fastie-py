@@ -22,7 +22,7 @@ class UserAccountController(BaseController, ABC):
             users = self.user_service.get_all()
             return self.success(content=users, message="Users retrieved successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)
 
     def register_user(self, request: UserCreateSchema):
         """
@@ -34,4 +34,4 @@ class UserAccountController(BaseController, ABC):
             user = self.user_service.create(request)
             return self.success(content=user, message="User registered successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)

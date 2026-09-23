@@ -33,4 +33,4 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
         try:
             return self.success(message="${to_title_case(name)} endpoint working!")
         except Exception as e:
-            return self.error(message=str(e)) 
+            return self.internal_error(e)

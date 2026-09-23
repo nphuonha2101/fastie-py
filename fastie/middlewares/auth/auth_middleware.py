@@ -1,17 +1,16 @@
-import jwt
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.requests import Request
 
 from fastie.middlewares.abstract_middleware import AbstractMiddleware
 from fastie.core.decorators.di import component
+from fastie.core.securities.jwt import Jwt
 
 
 @component
 class AuthMiddleware(AbstractMiddleware):
     def __init__(self):
-        self.secret_key = "your-secret-key"  # Should be configured in environment variable
-        self.algorithm = "HS256"
+        self.jwt = Jwt
 
     async def handle(self, request: Request, credentials: HTTPAuthorizationCredentials):
         """
@@ -25,12 +24,7 @@ class AuthMiddleware(AbstractMiddleware):
             )
 
         try:
-            # Decode JWT token
-            payload = jwt.decode(
-                credentials.credentials, 
-                self.secret_key, 
-                algorithms=[self.algorithm]
-            )
+            payload = self.jwt.decode_token(credentials.credentials)
             
             user_id = payload.get("sub")
             if user_id is None:
@@ -44,13 +38,7 @@ class AuthMiddleware(AbstractMiddleware):
             request.state.user_id = user_id
             return {"user_id": user_id}
             
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        except jwt.JWTError:
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",

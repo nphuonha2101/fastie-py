@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Fastie Framework - A Laravel Artisan-like CLI and DI-based framework for FastAPI"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -26,7 +26,8 @@ dependencies = [
     "pymysql",
     "alembic",
     "pyjwt",
-    "passlib[bcrypt]",
+    "redis>=5,<6",
+    "bcrypt>=4,<5",
     "email-validator",
     "mako",
     "click",
@@ -42,7 +43,13 @@ dependencies = [
 fastie = "fastie.cli:cli"
 
 [tool.setuptools]
-packages = ["fastie"]
+
+[tool.setuptools.packages.find]
+include = ["fastie*"]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 fastie = ["templates/**/*.mako", "stubs/**/*"]
+
+[tool.setuptools.exclude-package-data]
+fastie = ["**/__pycache__/*", "**/*.py[cod]"]

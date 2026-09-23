@@ -1,55 +1,55 @@
 from abc import ABC
-import jwt
-from datetime import datetime, timedelta
-from fastapi import Request, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from fastie.controllers.base_controller import BaseController
 from fastie.core.decorators.di import controller, inject
+from fastie.core.securities.auth import Auth
+from fastie.infrastructures.database.db_context import DbContext
+from fastie.middlewares.auth.auth_middleware import AuthMiddleware
+from app.models.user import User
+from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
+from app.schemas.responses.user.user_response_schema import UserResponseSchema
 
 @controller
 class AuthController(BaseController, ABC):
 
     def __init__(self):
         super().__init__()
-        self.secret_key = "your-secret-key"  # Should be retrieved from environment
-        self.algorithm = "HS256"
 
     def define_routes(self):
         self.router.post("/login", summary="User Login", status_code=200)(self.login)
-        self.router.get("/profile", summary="User Profile", status_code=200)(self.get_profile)
+        self.router.get(
+            "/profile",
+            summary="User Profile",
+            status_code=200,
+            dependencies=[Depends(AuthMiddleware())],
+        )(self.get_profile)
         self.router.get("/greet", summary="Greeting Endpoint", status_code=200)(self.greet)
 
-    def login(self, request: Request):
+    def login(self, request: AccessTokenRequestSchema):
         """
         Handles user login and creates JWT token.
         :param request: FastAPI Request object
         :return: Success message with JWT token.
         """
-        user_data = {
-            "user_id": "123",
-            "username": "demo_user",
-            "email": "demo@example.com"
-        }
-        
-        # generate token - DEMO
-        token_data = {
-            "sub": user_data["user_id"],
-            "username": user_data["username"],
-            "exp": datetime.utcnow() + timedelta(hours=24)
-        }
-        
-        access_token = jwt.encode(token_data, self.secret_key, algorithm=self.algorithm)
-        
-        middleware_info = {}
-        if hasattr(request.state, 'rate_limit_headers'):
-            middleware_info['rate_limit'] = request.state.rate_limit_headers
+        user = Auth.authenticate(User, request.model_dump())
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        access_token = Auth.create_access_token({
+            "sub": str(user.id),
+            "email": str(user.email),
+        })
         
         return self.success(content={
             "message": "Login successful",
             "access_token": access_token,
             "token_type": "bearer",
-            "user": user_data,
-            "middleware_info": middleware_info
+            "user": user,
         })
 
     def get_profile(self, request: Request):
@@ -64,19 +64,30 @@ class AuthController(BaseController, ABC):
                 detail="User not authenticated"
             )
         
-        user_id = request.state.user_id
-        
-        # Simulated user data - in reality, this would query from the database
-        user_profile = {
-            "user_id": user_id,
-            "username": "demo_user",
-            "email": "demo@example.com",
-            "created_at": "2024-01-01T00:00:00Z"
-        }
-        
+        try:
+            user_id = int(request.state.user_id)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token subject",
+            ) from exc
+
+        with DbContext() as db:
+            user = (
+                db.session.query(User)
+                .filter(User.id == user_id, User.is_active.is_(True), User.deleted_at.is_(None))
+                .first()
+            )
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User is no longer active",
+            )
+
         return self.success(content={
             "message": "Profile retrieved successfully",
-            "user": user_profile
+            "user": UserResponseSchema.model_validate(user),
         })
 
     def greet(self, request: Request):
@@ -99,7 +110,6 @@ class AuthController(BaseController, ABC):
             "client_ip": client_ip,
             "middleware_data": middleware_data
         })
-
 
 
 

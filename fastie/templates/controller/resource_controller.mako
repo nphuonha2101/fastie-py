@@ -38,7 +38,7 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
             ${to_snake_case(name)}s = self.${to_snake_case(name)}_service.get_all()
             return self.success(content=${to_snake_case(name)}s, message="${to_title_case(name)}s retrieved successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)
 
     def create(self):
         """Create a new ${to_snake_case(name)}"""
@@ -46,7 +46,7 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
             # Implementation needed
             return self.success(message="${to_title_case(name)} created successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)
 
     def show(self, id: int):
         """Get ${to_snake_case(name)} by ID"""
@@ -54,7 +54,7 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
             ${to_snake_case(name)} = self.${to_snake_case(name)}_service.get_by_id(id)
             return self.success(content=${to_snake_case(name)}, message="${to_title_case(name)} retrieved successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)
 
     def update(self, id: int):
         """Update ${to_snake_case(name)}"""
@@ -62,7 +62,7 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
             # Implementation needed
             return self.success(message="${to_title_case(name)} updated successfully.")
         except Exception as e:
-            return self.error(message=str(e))
+            return self.internal_error(e)
 
     def delete(self, id: int):
         """Delete ${to_snake_case(name)}"""
@@ -70,4 +70,4 @@ class ${to_class_name(name)}Controller(BaseController, ABC):
             self.${to_snake_case(name)}_service.delete(id)
             return self.success(message="${to_title_case(name)} deleted successfully.")
         except Exception as e:
-            return self.error(message=str(e)) 
+            return self.internal_error(e)

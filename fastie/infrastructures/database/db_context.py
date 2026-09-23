@@ -15,9 +15,16 @@ class DbContext:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type:
-            self.session.rollback()
-        else:
-            self.session.commit()
-        self.session.close()
+        try:
+            if exc_type:
+                self.session.rollback()
+            else:
+                try:
+                    self.session.commit()
+                except Exception:
+                    self.session.rollback()
+                    raise
+        finally:
+            self.session.close()
 
+        return False

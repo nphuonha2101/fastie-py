@@ -6,6 +6,8 @@ from pathlib import Path
 from datetime import datetime
 import subprocess
 import shutil
+import secrets
+from dotenv import load_dotenv
 from fastie.core.utils.console import fastie_console
 
 # Import template engine
@@ -21,6 +23,67 @@ class FastieGroup(click.Group):
     def format_help(self, ctx, formatter):
         fastie_console.print_banner()
         super().format_help(ctx, formatter)
+
+
+def _alembic_command(*args):
+    """Build an Alembic command using the current Python environment."""
+    return [sys.executable, '-m', 'alembic', *args]
+
+
+def _run_alembic(*args):
+    """Run Alembic and convert process failures into useful CLI errors."""
+    try:
+        return subprocess.run(_alembic_command(*args), check=True, text=True)
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            "Alembic is not installed in the active Python environment. "
+            "Install the project dependencies first."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise click.ClickException(
+            f"Alembic command failed with exit code {exc.returncode}: "
+            f"{' '.join(_alembic_command(*args))}"
+        ) from exc
+
+
+def _alembic_heads():
+    """Return migration heads from the local Alembic script directory."""
+    config_path = Path('alembic.ini')
+    if not config_path.is_file():
+        raise click.ClickException(
+            "alembic.ini was not found. Run this command from the project root."
+        )
+
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        config = Config(str(config_path))
+        return tuple(ScriptDirectory.from_config(config).get_heads())
+    except Exception as exc:
+        raise click.ClickException(f"Could not inspect the migration graph: {exc}") from exc
+
+
+def _ensure_single_migration_head():
+    """Reject ambiguous migration graphs before creating or applying revisions."""
+    heads = _alembic_heads()
+    if len(heads) > 1:
+        formatted_heads = ', '.join(heads)
+        raise click.ClickException(
+            "Multiple Alembic heads detected: "
+            f"{formatted_heads}. Resolve them with `alembic merge` before continuing."
+        )
+    return heads[0] if heads else None
+
+
+def _environment_name():
+    """Read the application environment without overwriting process variables."""
+    load_dotenv()
+    return os.getenv('ENVIRONMENT', os.getenv('APP_ENV', 'development')).strip().lower()
+
+
+def _is_production():
+    return _environment_name() in {'prod', 'production'}
 
 @click.group(cls=FastieGroup, invoke_without_command=True)
 @click.version_option(version='0.0.1a1', prog_name='Fastie CLI')
@@ -99,47 +162,67 @@ def database():
 def db_migrate():
     """Run database migrations"""
     fastie_console.info("Running database migrations...")
-    try:
-        subprocess.run(['alembic', 'upgrade', 'head'], check=True)
-        fastie_console.success("Migrations completed successfully!")
-    except subprocess.CalledProcessError as e:
-        fastie_console.error(f"Migration failed: {str(e)}")
+    _ensure_single_migration_head()
+    _run_alembic('upgrade', 'head')
+    fastie_console.success("Migrations completed successfully!")
 
 
 @database.command(name='rollback')
-@click.option('--steps', '-s', default=1, help='Number of steps to rollback')
-def db_rollback(steps):
+@click.option('--steps', '-s', default=1, type=click.IntRange(min=1), help='Number of steps to rollback')
+@click.option('--force', is_flag=True, help='Allow rollback in production (use forward-fix when possible)')
+def db_rollback(steps, force):
     """Rollback database migrations"""
+    if _is_production() and not force:
+        raise click.ClickException(
+            "Rollback is blocked in production by default. Use a forward-fix migration; "
+            "pass --force only with an explicit operational decision."
+        )
+
+    _ensure_single_migration_head()
     fastie_console.info(f"Rolling back {steps} migration(s)...")
-    try:
-        for _ in range(steps):
-            subprocess.run(['alembic', 'downgrade', '-1'], check=True)
-        fastie_console.success("Rollback completed successfully!")
-    except subprocess.CalledProcessError as e:
-        fastie_console.error(f"Rollback failed: {str(e)}")
+    for _ in range(steps):
+        _run_alembic('downgrade', '-1')
+    fastie_console.success("Rollback completed successfully!")
 
 
 @database.command(name='reset')
 @click.confirmation_option(prompt='Are you sure you want to reset the database?')
 def db_reset():
     """Reset database (rollback all migrations)"""
+    if _is_production():
+        raise click.ClickException(
+            "Database reset is permanently blocked when ENVIRONMENT is production."
+        )
+
+    _ensure_single_migration_head()
     fastie_console.info("Resetting database...")
-    try:
-        subprocess.run(['alembic', 'downgrade', 'base'], check=True)
-        subprocess.run(['alembic', 'upgrade', 'head'], check=True)
-        fastie_console.success("Database reset completed!")
-    except subprocess.CalledProcessError as e:
-        fastie_console.error(f"Database reset failed: {str(e)}")
+    _run_alembic('downgrade', 'base')
+    _run_alembic('upgrade', 'head')
+    fastie_console.success("Database reset completed!")
 
 
 @database.command(name='status')
 def db_status():
     """Show migration status"""
-    try:
-        subprocess.run(['alembic', 'current'], check=True)
-        subprocess.run(['alembic', 'history'], check=True)
-    except subprocess.CalledProcessError as e:
-        fastie_console.error(f"Failed to get database status: {str(e)}")
+    heads = _alembic_heads()
+    if len(heads) > 1:
+        fastie_console.warning(
+            "Multiple migration heads detected: " + ', '.join(heads)
+        )
+    _run_alembic('current')
+    _run_alembic('history')
+
+
+@database.command(name='check')
+def db_check():
+    """Validate the migration graph and detect schema drift."""
+    head = _ensure_single_migration_head()
+    if head is None:
+        raise click.ClickException("No Alembic migration revisions were found.")
+
+    _run_alembic('current', '--check-heads')
+    _run_alembic('check')
+    fastie_console.success(f"Migration graph is valid and schema matches head {head}.")
 
 
 
@@ -154,7 +237,7 @@ def make():
 @click.argument('name', required=False)
 @click.option('--table', '-t', help='Table name for migration')
 @click.option('--empty', is_flag=True, help='Create empty migration (no autogenerate)')
-@click.option('--auto', is_flag=True, help='Auto-generate migration name based on detected changes')
+@click.option('--auto', is_flag=True, help='Generate a migration name from the table or timestamp')
 def make_migration(name, table, empty, auto):
     """Create a new migration file"""
     if auto and name:
@@ -165,31 +248,33 @@ def make_migration(name, table, empty, auto):
         fastie_console.error("Migration name is required in manual mode")
         return
     
-    try:
-        if auto:
-            fastie_console.info("Analyzing database changes...")
-            if empty:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                message = f"empty_migration_{timestamp}"
-            else:
-                message = _generate_auto_migration_name(table)
-            fastie_console.step(f"Generated name: {message}")
+    if auto:
+        if empty:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            message = f"empty_migration_{timestamp}"
+        elif table:
+            message = f"update_{table.lower()}_table"
         else:
-            if table and not name.startswith('create_'):
-                message = f"create_{table}_table"
-            else:
-                message = name.lower().replace(' ', '_')
-            fastie_console.step(f"Creating migration: {message}")
-        
-        cmd = ['alembic', 'revision', '-m', message]
-        if not empty:
-            cmd.insert(2, '--autogenerate')
-            
-        subprocess.run(cmd, check=True)
-        fastie_console.success("Migration created successfully!")
-                
-    except subprocess.CalledProcessError as e:
-        fastie_console.error(f"Failed to create migration: {str(e)}")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            message = f"update_schema_{timestamp}"
+        fastie_console.step(f"Generated name: {message}")
+    else:
+        if table and not name.startswith('create_'):
+            message = f"create_{table}_table"
+        else:
+            message = name.lower().replace(' ', '_')
+        fastie_console.step(f"Creating migration: {message}")
+
+    head = _ensure_single_migration_head()
+    cmd = ['revision']
+    if not empty:
+        cmd.append('--autogenerate')
+    cmd.extend(['-m', message])
+    if head:
+        cmd.extend(['--head', head])
+
+    _run_alembic(*cmd)
+    fastie_console.success("Migration created successfully!")
 
 
 @make.command(name='controller')
@@ -481,107 +566,6 @@ def install():
 
 
 # =============================================================================
-# AUTO MIGRATION NAME GENERATOR
-# =============================================================================
-
-def _generate_auto_migration_name(table_hint=None):
-    """Generate migration name based on detected database changes"""
-    from datetime import datetime
-    import tempfile
-    import re
-    
-    try:
-        # Create a temporary migration to analyze changes
-        temp_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_message = f"temp_analysis_{temp_timestamp}"
-        
-        # Run autogenerate to see what changes would be made
-        result = subprocess.run([
-            'alembic', 'revision', '--autogenerate', '-m', temp_message, '--head', 'head'
-        ], capture_output=True, text=True, check=True)
-        
-        # Find the generated migration file
-        migration_dir = Path('alembic/versions')
-        if migration_dir.exists():
-            # Get the most recent migration file (our temp one)
-            migration_files = list(migration_dir.glob('*.py'))
-            if migration_files:
-                latest_migration = max(migration_files, key=lambda x: x.stat().st_mtime)
-                
-                # Read and analyze the migration content
-                with open(latest_migration, 'r') as f:
-                    content = f.read()
-                
-                # Parse operations to generate descriptive name
-                name_parts = []
-                
-                # Check for table operations
-                if 'op.create_table(' in content:
-                    tables = re.findall(r"op\.create_table\(['\"](\w+)['\"]", content)
-                    if tables:
-                        name_parts.append(f"create_{tables[0]}_table")
-                
-                if 'op.drop_table(' in content:
-                    tables = re.findall(r"op\.drop_table\(['\"](\w+)['\"]", content)
-                    if tables:
-                        name_parts.append(f"drop_{tables[0]}_table")
-                
-                # Check for column operations
-                if 'op.add_column(' in content:
-                    columns = re.findall(r"op\.add_column\(['\"](\w+)['\"].*?['\"](\w+)['\"]", content)
-                    if columns:
-                        table_name, col_name = columns[0]
-                        name_parts.append(f"add_{col_name}_to_{table_name}")
-                
-                if 'op.drop_column(' in content:
-                    columns = re.findall(r"op\.drop_column\(['\"](\w+)['\"].*?['\"](\w+)['\"]", content)
-                    if columns:
-                        table_name, col_name = columns[0]
-                        name_parts.append(f"remove_{col_name}_from_{table_name}")
-                
-                # Check for index operations
-                if 'op.create_index(' in content:
-                    name_parts.append("add_indexes")
-                
-                if 'op.drop_index(' in content:
-                    name_parts.append("remove_indexes")
-                
-                # Check for foreign key operations
-                if 'op.create_foreign_key(' in content:
-                    name_parts.append("add_foreign_keys")
-                
-                if 'op.drop_constraint(' in content and 'foreignkey' in content.lower():
-                    name_parts.append("remove_foreign_keys")
-                
-                # Clean up temp migration file
-                latest_migration.unlink()
-                
-                # Generate final name
-                if name_parts:
-                    # Take first few operations to avoid very long names
-                    final_name = "_and_".join(name_parts[:2])
-                    if len(name_parts) > 2:
-                        final_name += f"_and_{len(name_parts)-2}_more"
-                else:
-                    # No meaningful changes detected
-                    final_name = f"update_schema_{temp_timestamp}"
-                
-                return final_name
-        
-        # Fallback if analysis fails
-        return f"auto_migration_{temp_timestamp}"
-        
-    except subprocess.CalledProcessError as e:
-        # Fallback to table hint or timestamp
-        if table_hint:
-            return f"update_{table_hint}_table"
-        return f"auto_migration_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    except Exception as e:
-        # Ultimate fallback
-        return f"migration_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-
-# =============================================================================
 # TEMPLATE GENERATORS
 # =============================================================================
 
@@ -594,16 +578,23 @@ def _generate_env_content(database):
     else:  # mysql
         db_url = "mysql+pymysql://user:password@localhost:3306/dbname"
     
+    jwt_secret = secrets.token_urlsafe(32)
+
     return f"""# Database Configuration
 DATABASE_URL={db_url}
 
+# Deployment environment (development, staging, or production)
+ENVIRONMENT=development
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+
+# JWT configuration (use a secret manager for production)
+JWT_SECRET={jwt_secret}
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REDIS_URL=
+
 # Application Settings
 DEBUG=True
-SECRET_KEY=your-secret-key-here
-
-# JWT Settings (if using authentication)
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
 """
 
 

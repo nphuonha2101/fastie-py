@@ -236,6 +236,6 @@ def load_components():
                 continue
             _initialize_component(cls)
 
-    print("Registered components:")
+    logger.info("Registered components:")
     for cls in _component_registry:
-        print("-", cls.__name__)
+        logger.info("- %s", cls.__name__)

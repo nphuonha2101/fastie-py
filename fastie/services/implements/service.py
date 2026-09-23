@@ -41,7 +41,8 @@ class Service(IService[T, TCreate, TUpdate, TResponse], Generic[T, TCreate, TUpd
         try:
             with DbContext() as db_context:
                 self.repository.set_session(db_context.session)
-                return self.response_model.model_validate(self.repository.get_by_id(id))
+                item = self.repository.get_by_id(id)
+                return self.response_model.model_validate(item) if item is not None else None
         except Exception as e:
             raise RepositoryException('Error retrieving record by ID: ' + str(e))
 
