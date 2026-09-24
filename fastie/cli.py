@@ -88,7 +88,7 @@ def _is_production():
 @click.group(cls=FastieGroup, invoke_without_command=True)
 @click.version_option(version='0.0.1a1', prog_name='Fastie CLI')
 def cli():
-    """Fastie Framework CLI - Laravel Artisan-like command line interface"""
+    """Fastie CLI for convention-driven FastAPI projects."""
     # Add current directory to path so it can find 'app'
     sys.path.append(os.getcwd())
     
@@ -101,7 +101,7 @@ def cli():
 @cli.command()
 @click.argument('project_name')
 @click.option('--database', '-d', default='mysql', help='Database type (mysql, sqlite, postgres)')
-@click.option('--auth', is_flag=True, help='Include authentication boilerplate')
+@click.option('--auth', is_flag=True, help='Deprecated: authentication is included by default')
 @click.option('--path', '-p', help='Target directory path (default: current directory)')
 def new(project_name, database, auth, path):
     """Create a new Fastie project"""
@@ -144,7 +144,7 @@ def new(project_name, database, auth, path):
         fastie_console.step(f"cd {project_name}")
         fastie_console.step("python -m venv venv")
         fastie_console.step("pip install -r requirements.txt")
-        fastie_console.step("fastie serve")
+        fastie_console.step("fastie dev")
         
     except Exception as e:
         fastie_console.error(f"Error creating project: {str(e)}")
@@ -358,7 +358,7 @@ def make_model(name, fields, no_import):
     """Create a new model"""
     try:
         model_content = _generate_model_template(name, fields)
-        model_file = Path(f"app/models/{name.lower()}.py")
+        model_file = Path(f"app/models/{_to_snake_case(name)}.py")
         
         with open(model_file, 'w') as f:
             f.write(model_content)
@@ -376,15 +376,73 @@ def make_model(name, fields, no_import):
         fastie_console.error(f"Error creating model: {str(e)}")
 
 
+@make.command(name='resource')
+@click.argument('name')
+@click.option('--fields', '-f', help='Fields such as name:str,email:email,price:decimal')
+@click.option('--force', is_flag=True, help='Overwrite generated files if they already exist')
+def make_resource(name, fields, force):
+    """Create a model, schemas, and a plain FastAPI CRUD router."""
+    try:
+        snake_name = _to_snake_case(name)
+        class_name = _to_class_name(name)
+        field_specs = _parse_resource_fields(fields)
+
+        files = {
+            Path(f"app/models/{snake_name}.py"): _generate_model_template(name, fields),
+            Path(f"app/schemas/requests/{snake_name}/{snake_name}_create_schema.py"):
+                _generate_resource_create_schema(name, field_specs),
+            Path(f"app/schemas/requests/{snake_name}/{snake_name}_update_schema.py"):
+                _generate_resource_update_schema(name, field_specs),
+            Path(f"app/schemas/responses/{snake_name}/{snake_name}_response_schema.py"):
+                _generate_resource_response_schema(name, field_specs),
+            Path(f"app/api/v1/routes/{snake_name}.py"):
+                _generate_resource_router(name, field_specs),
+        }
+        init_files = set()
+        for file_path in files:
+            init_files.add(file_path.parent / '__init__.py')
+        init_files.add(Path('app/api/v1/routes/__init__.py'))
+
+        if not force:
+            existing = [str(path) for path in files if path.exists()]
+            if existing:
+                raise click.ClickException(
+                    "Refusing to overwrite existing generated files: " + ', '.join(existing)
+                )
+
+        for file_path, content in files.items():
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding='utf-8')
+        for init_file in init_files:
+            init_file.parent.mkdir(parents=True, exist_ok=True)
+            init_file.touch(exist_ok=True)
+
+        _add_model_to_init(name)
+        if _register_resource_route(name):
+            fastie_console.success(f"Resource route registered: /api/v1/{snake_name}s")
+        else:
+            fastie_console.info(
+                f"Add {class_name} router to app/routes/api.py if this project was created by an older Fastie version."
+            )
+
+        fastie_console.success(f"Resource created: [bold]{class_name}[/bold]")
+        fastie_console.step(f"Review the model and run: fastie make migration add_{snake_name}_table --auto")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Error creating resource: {e}") from e
+
+
 @make.command(name='schema')
 @click.argument('name')
 @click.option('--type', 'schema_type', type=click.Choice(['request', 'response', 'model']), default='model')
 def make_schema(name, schema_type):
     """Create a new schema"""
+    snake_name = _to_snake_case(name)
     path_map = {
-        'request': (Path(f"app/schemas/requests/{name.lower()}"), f"{name.lower()}_request_schema.py"),
-        'response': (Path(f"app/schemas/responses/{name.lower()}"), f"{name.lower()}_response_schema.py"),
-        'model': (Path(f"app/schemas/models/{name.lower()}"), f"{name.lower()}_base_schema.py")
+        'request': (Path(f"app/schemas/requests/{snake_name}"), f"{snake_name}_request_schema.py"),
+        'response': (Path(f"app/schemas/responses/{snake_name}"), f"{snake_name}_response_schema.py"),
+        'model': (Path(f"app/schemas/models/{snake_name}"), f"{snake_name}_base_schema.py")
     }
     path, file_name = path_map[schema_type]
     
@@ -407,7 +465,20 @@ def make_schema(name, schema_type):
 @click.option('--port', default=8000, help='Port to bind')
 @click.option('--reload', is_flag=True, help='Enable auto-reload')
 def serve(host, port, reload):
-    """Start the development server"""
+    """Start the application server."""
+    _serve(host, port, reload)
+
+
+@cli.command()
+@click.option('--host', default='127.0.0.1', help='Host to bind')
+@click.option('--port', default=8000, help='Port to bind')
+def dev(host, port):
+    """Start the development server with auto-reload."""
+    _serve(host, port, True)
+
+
+def _serve(host, port, reload):
+    """Run Uvicorn for the current application."""
     fastie_console.print_banner()
     fastie_console.info(f"Starting server at [bold]http://{host}:{port}[/bold]")
     
@@ -590,6 +661,8 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 # JWT configuration (use a secret manager for production)
 JWT_SECRET={jwt_secret}
 JWT_ALGORITHM=HS256
+JWT_ISSUER=fastie
+JWT_AUDIENCE=fastie-api
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REDIS_URL=
 
@@ -785,7 +858,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 class {class_name}(AbstractModel):
-    __tablename__ = '{name.lower()}s'
+    __tablename__ = '{_to_snake_case(name)}s'
     
     def get_response_model(self) -> Optional[BaseModel]:
         return None
@@ -855,6 +928,150 @@ class {name.title()}BaseSchema(BaseModel):
 '''
 
 
+def _parse_resource_fields(fields):
+    """Parse the small, safe field DSL used by ``make resource``."""
+    if not fields:
+        return []
+
+    type_map = {
+        'str': ('str', None, None),
+        'string': ('str', None, None),
+        'text': ('str', None, None),
+        'int': ('int', None, None),
+        'integer': ('int', None, None),
+        'bool': ('bool', None, 'True'),
+        'boolean': ('bool', None, 'True'),
+        'datetime': ('datetime', 'datetime', None),
+        'date': ('date', 'date', None),
+        'float': ('float', None, None),
+        'decimal': ('Decimal', 'Decimal', None),
+        'email': ('EmailStr', 'EmailStr', None),
+        'url': ('HttpUrl', 'HttpUrl', None),
+        'phone': ('str', None, None),
+        'json': ('dict', None, 'None'),
+    }
+    parsed = []
+    for raw_field in fields.split(','):
+        parts = [part.strip() for part in raw_field.split(':')]
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            raise click.ClickException(
+                f"Invalid field '{raw_field}'. Use the format name:type, for example name:str."
+            )
+
+        field_name = _to_snake_case(parts[0])
+        field_type = parts[1].lower()
+        if field_type not in type_map:
+            supported = ', '.join(sorted(type_map))
+            raise click.ClickException(
+                f"Unsupported type '{field_type}' for '{field_name}'. Supported types: {supported}."
+            )
+        python_type, import_name, default = type_map[field_type]
+        parsed.append({
+            'name': field_name,
+            'python_type': python_type,
+            'import_name': import_name,
+            'default': default,
+        })
+    return parsed
+
+
+def _resource_schema_imports(fields):
+    imports = {'from pydantic import BaseModel, ConfigDict'}
+    if any(field['import_name'] == 'EmailStr' for field in fields):
+        imports.add('from pydantic import EmailStr')
+    if any(field['import_name'] == 'HttpUrl' for field in fields):
+        imports.add('from pydantic import HttpUrl')
+    if any(field['import_name'] == 'datetime' for field in fields):
+        imports.add('from datetime import datetime')
+    if any(field['import_name'] == 'date' for field in fields):
+        imports.add('from datetime import date')
+    if any(field['import_name'] == 'Decimal' for field in fields):
+        imports.add('from decimal import Decimal')
+    return '\n'.join(sorted(imports))
+
+
+def _generate_resource_create_schema(name, fields):
+    class_name = _to_class_name(name)
+    field_lines = [
+        f"    {field['name']}: {field['python_type']}"
+        + (f" = {field['default']}" if field['default'] is not None else '')
+        for field in fields
+    ] or ['    pass']
+    return f'''{_resource_schema_imports(fields)}
+
+
+class {class_name}CreateSchema(BaseModel):
+    """Validated input for creating a {class_name}."""
+{chr(10).join(field_lines)}
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+'''
+
+
+def _generate_resource_update_schema(name, fields):
+    class_name = _to_class_name(name)
+    field_lines = [
+        f"    {field['name']}: {field['python_type']} | None = None"
+        for field in fields
+    ] or ['    pass']
+    return f'''{_resource_schema_imports(fields)}
+from typing import Optional
+
+
+class {class_name}UpdateSchema(BaseModel):
+    """Optional fields for updating a {class_name}."""
+{chr(10).join(field_lines)}
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+'''
+
+
+def _generate_resource_response_schema(name, fields):
+    class_name = _to_class_name(name)
+    field_lines = [
+        f"    {field['name']}: {field['python_type']}"
+        + (f" = {field['default']}" if field['default'] is not None else '')
+        for field in fields
+    ]
+    if not field_lines:
+        field_lines = ['    pass']
+    imports = _resource_schema_imports(fields)
+    if 'from datetime import datetime' not in imports:
+        imports += '\nfrom datetime import datetime'
+    return f'''{imports}
+
+
+class {class_name}ResponseSchema(BaseModel):
+    """Public representation of a {class_name}."""
+    id: int
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+{chr(10).join(field_lines)}
+
+    model_config = ConfigDict(from_attributes=True)
+'''
+
+
+def _generate_resource_router(name, fields):
+    if TEMPLATES_AVAILABLE:
+        try:
+            return render_template(
+                'resource/router.mako',
+                name=name,
+                fields=fields,
+            )
+        except Exception as e:
+            click.echo(f"⚠️  Template error: {e}")
+
+    snake_name = _to_snake_case(name)
+    class_name = _to_class_name(name)
+    return f'''from fastapi import APIRouter
+
+# Template rendering is unavailable. Re-run after installing the Fastie template dependencies.
+router = APIRouter()
+'''
+
+
 def _show_fallback_routes():
     """Show fallback routes when app inspection fails"""
     fallback_routes = [
@@ -880,6 +1097,11 @@ def _to_class_name(name):
     return ''.join(word.capitalize() for word in parts)
 
 
+def _to_snake_case(name):
+    """Convert a CLI name to the convention used by generated modules."""
+    return name.lower().replace('-', '_')
+
+
 def _add_model_to_init(name):
     """Add model import to models/__init__.py"""
     init_file = Path("app/models/__init__.py")
@@ -887,8 +1109,8 @@ def _add_model_to_init(name):
     try:
         if not init_file.exists():
             class_name = _to_class_name(name)
-            init_content = f"""from .abstract_model import AbstractModel
-from .{name.lower()} import {class_name}
+            init_content = f"""from fastie.models.abstract_model import AbstractModel
+from .{_to_snake_case(name)} import {class_name}
 
 __all__ = ['AbstractModel', '{class_name}']
 """
@@ -900,7 +1122,7 @@ __all__ = ['AbstractModel', '{class_name}']
             content = f.read()
         
         class_name = _to_class_name(name)
-        import_line = f"from .{name.lower()} import {class_name}"
+        import_line = f"from .{_to_snake_case(name)} import {class_name}"
         if import_line in content:
             return True
         
@@ -959,6 +1181,45 @@ def _update_routes_registration(name):
     routes_file = Path("app/routes/api.py")
     if routes_file.exists():
         fastie_console.info(f"Don't forget to register {name.title()}Controller in [bold]app/routes/api.py[/bold]")
+
+
+def _register_resource_route(name):
+    """Register a generated router in the marker section of a new project."""
+    routes_file = Path('app/routes/api.py')
+    if not routes_file.exists():
+        return False
+
+    content = routes_file.read_text(encoding='utf-8')
+    snake_name = _to_snake_case(name)
+    class_name = _to_class_name(name)
+    import_marker = '# Fastie resource routes - generated imports'
+    include_marker = '# Fastie resource routes - generated includes'
+    import_line = (
+        f'from app.api.v1.routes.{snake_name} import router as {snake_name}_router'
+    )
+    include_line = (
+        f'api_router.include_router({snake_name}_router, '
+        f'prefix="/{snake_name if snake_name.endswith("s") else snake_name + "s"}", '
+        f'tags=["{class_name}"])'
+    )
+
+    if import_marker not in content or include_marker not in content:
+        return False
+    if import_line in content:
+        return True
+
+    content = content.replace(
+        import_marker,
+        f'{import_line}\n{import_marker}',
+        1,
+    )
+    content = content.replace(
+        include_marker,
+        f'{include_line}\n{include_marker}',
+        1,
+    )
+    routes_file.write_text(content, encoding='utf-8')
+    return True
 
 
 if __name__ == '__main__':

@@ -55,7 +55,7 @@ def discover_submodules(package_name):
             raise RuntimeError(f"Error importing {full_name}") from exc
 
 def initialize_application():
-    """Initialize the application components."""
+    """Initialize legacy decorator components for existing applications."""
     # Discover and import all component classes
     discover_components()
 

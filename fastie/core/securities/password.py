@@ -1,30 +1,40 @@
+"""Password hashing helpers backed by pwdlib's recommended Argon2 setup."""
+
 import logging
 
-import bcrypt
+from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
+from pwdlib.hashers.argon2 import Argon2Hasher
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 logger = logging.getLogger(__name__)
-
-
-def _password_bytes(password: str) -> bytes:
-    if not isinstance(password, str):
-        raise TypeError("Password must be a string")
-    encoded = password.encode("utf-8")
-    if len(encoded) > 72:
-        raise ValueError("Password cannot exceed 72 UTF-8 bytes")
-    return encoded
+# Argon2 is always used for new passwords. Bcrypt remains in the verifier so
+# existing Fastie installations can migrate hashes on the next password change.
+password_hash = PasswordHash((Argon2Hasher(), BcryptHasher()))
 
 
 def __hash_password__(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("ascii")
+    """Hash a user password with Argon2."""
+    if not isinstance(password, str):
+        raise TypeError("Password must be a string")
+    if not password:
+        raise ValueError("Password cannot be empty")
+    return password_hash.hash(password)
+
 
 def __verify_password__(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
+    """Verify a password without leaking hash parsing details to callers."""
     try:
-        return bcrypt.checkpw(
-            _password_bytes(plain_password),
-            hashed_password.encode("ascii"),
-        )
-    except Exception:
-        logger.exception("Password verification failed")
+        return password_hash.verify(plain_password, hashed_password)
+    except (TypeError, ValueError, UnknownHashError):
+        logger.warning("Password verification failed for an unsupported hash")
         return False
+
+
+def verify_password_and_upgrade(plain_password: str, hashed_password: str) -> tuple[bool, str | None]:
+    """Verify a password and return a stronger replacement hash when needed."""
+    try:
+        return password_hash.verify_and_update(plain_password, hashed_password)
+    except (TypeError, ValueError, UnknownHashError):
+        logger.warning("Password verification failed for an unsupported hash")
+        return False, None

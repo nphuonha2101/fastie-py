@@ -9,7 +9,7 @@ from fastie.core.config.config import Config
 
 class Logger:
     """
-    A wrapper around Python's logging.Logger to provide a Laravel-like API.
+    Small wrapper around Python's logging.Logger for configured channels.
     """
     def __init__(self, name: str, logger: logging.Logger):
         self.name = name
@@ -36,13 +36,13 @@ class Logger:
 @component_decorator
 class LogManager:
     """
-    Manages logging channels and drivers, similar to Laravel's LogManager.
+    Manages configured logging channels and drivers.
     """
     @inject
     def __init__(self, config: Config):
         self._config = config
         self._channels: Dict[str, Logger] = {}
-        # Try multiple common keys for default channel (Laravel-style and Dynaconf-style)
+        # Accept both environment-style and nested Dynaconf-style settings.
         self._default_channel = (
             self._config.get("LOG_CHANNEL") or 
             self._config.get("logging.default") or 

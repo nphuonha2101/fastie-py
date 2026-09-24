@@ -8,7 +8,7 @@ version = "0.0.1a1"
 authors = [
   { name="Phuong Nha Nguyen", email="phuongnhanguyen.dev@gmail.com" },
 ]
-description = "Fastie Framework - A Laravel Artisan-like CLI and DI-based framework for FastAPI"
+description = "Fastie Framework - A convention-driven FastAPI CLI and backend foundation"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
@@ -21,13 +21,14 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
+    "python-multipart",
     "python-dotenv",
     "sqlalchemy",
     "pymysql",
     "alembic",
     "pyjwt",
     "redis>=5,<6",
-    "bcrypt>=4,<5",
+    "pwdlib[argon2,bcrypt]",
     "email-validator",
     "mako",
     "click",

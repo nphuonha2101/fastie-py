@@ -2,6 +2,7 @@
 fastapi
 uvicorn
 pydantic
+python-multipart
 python-dotenv
 
 # Database
@@ -13,7 +14,7 @@ redis>=5,<6
 
 # Authentication & Security  
 pyjwt
-bcrypt>=4,<5
+pwdlib[argon2,bcrypt]
 email-validator
 
 # Template Engine

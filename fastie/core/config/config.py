@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from pathlib import Path
 from dynaconf import Dynaconf
 from dotenv import load_dotenv
@@ -38,6 +39,8 @@ class Config:
         for key in (
             "JWT_SECRET",
             "JWT_ALGORITHM",
+            "JWT_ISSUER",
+            "JWT_AUDIENCE",
             "ACCESS_TOKEN_EXPIRE_MINUTES",
             "CORS_ALLOWED_ORIGINS",
             "REDIS_URL",
@@ -66,3 +69,9 @@ class Config:
             The configuration value or the default value if the key is not found.
         """
         return self.settings.get(key, default)
+
+
+@lru_cache(maxsize=1)
+def get_config() -> Config:
+    """Return configuration without requiring the legacy DI bootstrap."""
+    return Config()

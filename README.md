@@ -1,6 +1,10 @@
 # Fastie
 
-**Fastie** is a modern web framework built on top of **FastAPI**, inspired by the design philosophy of **Laravel Artisan**. It provides a structured project boilerplate, a robust Dependency Injection system, and a professional CLI to accelerate your production-ready application development.
+Fastie is a convention-driven backend starter built on **FastAPI**. Its
+default project is ordinary FastAPI code: `APIRouter`, `Depends(get_db)`,
+SQLAlchemy, Pydantic, and explicit migrations. The older controller/service/
+repository and decorator DI APIs remain available for existing projects, but
+they are optional compatibility features.
 
 Vietnamese: [Tiếng Việt](README.vi.md)
 
@@ -8,113 +12,100 @@ Vietnamese: [Tiếng Việt](README.vi.md)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Key Features
+## What you get
 
-- **Clean Architecture**: Separation of concerns using Repository & Service layers.
-- **Dependency Injection**: Automatic dependency management with decorators (`@inject`, `@controller`).
-- **Fastie CLI**: Powerful command-line tools for generating boilerplate code and managing migrations.
-- **Soft Delete**: Built-in soft-delete support in the base repository layer.
-- **Modern UI**: Professional terminal interface with gradient banners and styled output.
+- FastAPI-first generated application with request-scoped SQLAlchemy sessions.
+- OAuth2 password flow with bearer tokens, PyJWT claim validation, and Argon2
+  password hashing through `pwdlib` (with legacy bcrypt verification and
+  automatic upgrade after a successful login).
+- SQLAlchemy/Alembic migrations with a single-head check and schema drift check.
+- `fastie make resource` for a model, Pydantic schemas, and a CRUD router.
+- Soft-delete support in the optional base repository.
+- Redis-backed rate limiting when `REDIS_URL` is configured.
 
-## Installation
-
-Install via pip:
+## Quick start
 
 ```bash
 pip install fastie-py
-```
-
-Initialize a new project:
-
-```bash
-fastie new my_project
+fastie new my_project --database sqlite
 cd my_project
+pip install -r requirements.txt
+fastie db migrate
+fastie dev
 ```
 
-## CLI Reference
+The generated API is available under `/api/v1`. The standard OAuth2 token
+endpoint is `POST /api/v1/auth/token` with form fields `username` and
+`password`; `/api/v1/auth/login` is also kept as a JSON-friendly convenience.
 
-### Project & Server
-- `fastie new <name>`: Create a new project.
-- `fastie serve`: Start the development server (auto-reload).
-- `fastie routes`: List all registered routes.
-
-### Code Generation (make)
-- `fastie make controller <Name>`: Generate a new Controller.
-- `fastie make service <Name>`: Generate a new Service.
-- `fastie make repository <Name>`: Generate a new Repository.
-- `fastie make model <Name>`: Generate a new SQLAlchemy Model.
-- `fastie make migration <Name>`: Create a new migration file.
-
-### Database Management (db)
-- `fastie db migrate`: Run pending migrations.
-- `fastie db rollback`: Rollback the last migration in development; production requires `--force`.
-- `fastie db reset`: Rebuild the database in development only.
-- `fastie db status`: Check current migration status.
-- `fastie db check`: Validate that the migration graph has one head and the database matches the models.
-
-### Migration workflow
-
-Create and review every migration before applying it:
+## Generate a resource
 
 ```bash
-fastie make migration add_profile_fields --auto
+fastie make resource Product --fields "name:str,price:decimal,is_active:bool"
+fastie make migration add_products_table --auto
 fastie db check
 fastie db migrate
 ```
 
-Fastie enforces one migration head. If parallel branches create multiple heads, resolve them explicitly
-before applying or creating another migration:
+The resource generator creates a SQLAlchemy model, create/update/response
+schemas, a plain FastAPI CRUD router, and registers that router in the new
+project. Review generated code before applying the migration.
 
-```bash
-alembic merge -m "merge migration heads" <head-one> <head-two>
-fastie db check
+## CLI reference
+
+### Project and server
+
+- `fastie new <name>`: Create a project.
+- `fastie dev`: Run Uvicorn with auto-reload on localhost.
+- `fastie serve`: Run Uvicorn without auto-reload by default.
+- `fastie routes`: List application routes.
+
+### Code generation
+
+- `fastie make resource <Name>`: Generate the default CRUD path.
+- `fastie make model <Name>`: Generate only a model.
+- `fastie make migration <Name>`: Create a reviewed Alembic revision.
+- `fastie make controller/service/repository <Name>`: Legacy APIs for projects
+  that deliberately use the compatibility architecture.
+
+### Database
+
+- `fastie db migrate`: Apply migrations.
+- `fastie db check`: Ensure one migration head and no schema drift.
+- `fastie db status`: Show migration state and history.
+- `fastie db rollback`: Roll back in development; production requires `--force`.
+- `fastie db reset`: Rebuild a non-production database.
+
+Production should run `fastie db check` and `fastie db migrate` as explicit
+deployment steps before the application rollout. The application never runs
+migrations during startup.
+
+## Authentication configuration
+
+Set these values through the environment or a secret manager in production:
+
+```dotenv
+JWT_SECRET=<random secret with at least 32 characters>
+JWT_ALGORITHM=HS256
+JWT_ISSUER=fastie
+JWT_AUDIENCE=fastie-api
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+CORS_ALLOWED_ORIGINS=https://api.example.com
+REDIS_URL=redis://localhost:6379/0
 ```
 
-Production deployments should run `fastie db migrate` as a separate deploy step before rolling out the
-application. The application does not run migrations during startup, and destructive rollback/reset
-operations are not part of the production workflow.
+JWT payloads are signed, not encrypted. Do not put passwords or sensitive
+personal data in them. For a larger deployment, the JWT wrapper can be
+replaced with an external OIDC provider and JWKS validation without changing
+the route dependency shape.
 
-For production, configure `JWT_SECRET` with a random value of at least 32 characters, set
-`CORS_ALLOWED_ORIGINS` explicitly, and provide `REDIS_URL` for shared rate limiting across workers.
+## Compatibility architecture
 
-## Usage Examples
-
-### Dependency Injection
-
-```python
-@controller
-@inject
-class UserController(BaseController):
-    def __init__(self, user_service: IUserService):
-        self.user_service = user_service
-        
-    def define_routes(self):
-        self.router.get("/")(self.index)
-
-    async def index(self):
-        return self.success(content=self.user_service.get_all())
-```
-
-### Soft Delete
-
-```python
-# Soft delete
-self.repository.delete(id)
-
-# Restore
-self.repository.restore(id)
-
-# Query including deleted items
-items = self.repository.get_all(with_trash=True)
-```
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
+Fastie still ships `BaseController`, `Service`, `Repository`, `DbContext`, and
+decorator-based DI so existing applications can migrate incrementally. New
+features should start with a router and dependencies; introduce a service or
+repository only when the business logic actually benefits from one.
 
 ## License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for more details.
-
----
-Developed with ❤️ by **Phuong Nha Nguyen** in collaboration with **Antigravity (Google DeepMind)**.
+MIT License. See [LICENSE](LICENSE).

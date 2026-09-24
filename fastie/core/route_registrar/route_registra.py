@@ -10,9 +10,10 @@ from fastie.core.service_containers.service_containers import get_registry
 
 class RouteRegistrar:
     """
-    A class to register API routes in a FastAPI application.
-    This class allows for modular route registration by encapsulating the logic
-    for registering controllers and their routes under a specified prefix.
+    Compatibility adapter for controller-based applications.
+
+    New applications should use ``app.include_router`` directly. This class
+    remains available so existing projects can migrate without a flag day.
     """
     def __init__(self, app: FastAPI, prefix: str = "/api/v1"):
         self.app = app

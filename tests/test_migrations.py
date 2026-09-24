@@ -116,33 +116,102 @@ class MigrationWorkflowTests(unittest.TestCase):
         auth_flow = self.run_python(
             """
 from app.main import app
-from app.api.v1.controllers.user_account.user_account_controller import UserAccountController
 from app.models.user import User
+from app.routes.api import get_current_user, login, register_user
 from app.schemas.models.user.user_create_schema import UserCreateSchema
-from app.schemas.models.user.user_update_schema import UserUpdateSchema
-from fastie.core.securities.auth import Auth
+from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
+import bcrypt
 from fastie.core.securities.jwt import Jwt
-from fastie.core.service_containers.service_containers import get_registry
+from fastie.infrastructures.database.dependencies import get_database
 
-controller = get_registry().resolve(UserAccountController)
-created = controller.user_service.create(UserCreateSchema(
+database = get_database()
+create_db = database.get_session()
+created_response = register_user(UserCreateSchema(
     name='Test User',
     email='test@example.com',
     password='correct-horse-battery-staple',
-))
-updated = controller.user_service.update(created.id, UserUpdateSchema(name='Updated User'))
-authenticated = Auth.authenticate(
-    User,
-    {'email': 'test@example.com', 'password': 'correct-horse-battery-staple'},
-)
-token = Auth.create_access_token({'sub': str(authenticated.id)})
+), create_db)
+created_id = created_response['data'].id
+stored_hash = create_db.query(User).filter(User.id == created_id).one().password
+assert stored_hash.startswith('$argon2')
+create_db.close()
+
+login_db = database.get_session()
+login_response = login(AccessTokenRequestSchema(
+    email='test@example.com',
+    password='correct-horse-battery-staple',
+), login_db)
+token = login_response['data']['access_token']
 payload = Jwt.decode_token(token)
-assert created.id == authenticated.id
-assert updated.name == 'Updated User'
-assert payload['sub'] == str(created.id)
+current_user = get_current_user(token, login_db)
+assert current_user.id == created_id
+assert payload['sub'] == str(created_id)
+
+legacy = User(
+    name='Legacy User',
+    email='legacy@example.com',
+    password=bcrypt.hashpw(b'legacy-password', bcrypt.gensalt()).decode(),
+)
+login_db.add(legacy)
+login_db.commit()
+legacy_id = legacy.id
+login(AccessTokenRequestSchema(
+    email='legacy@example.com',
+    password='legacy-password',
+), login_db)
+assert login_db.query(User).filter(User.id == legacy_id).one().password.startswith('$argon2')
+login_db.close()
             """
         )
         self.assertEqual(auth_flow.returncode, 0, auth_flow.stdout + auth_flow.stderr)
+
+    def test_resource_generator_creates_plain_fastapi_feature(self):
+        result = self.run_fastie(
+            "make",
+            "resource",
+            "Product",
+            "--fields",
+            "name:str,price:decimal,is_active:bool",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.project_dir / "app/models/product.py").is_file())
+        self.assertTrue((self.project_dir / "app/api/v1/routes/product.py").is_file())
+
+        routes = (self.project_dir / "app/routes/api.py").read_text()
+        self.assertIn("product_router", routes)
+
+        compile_result = subprocess.run(
+            [sys.executable, "-m", "compileall", "-q", "app"],
+            cwd=self.project_dir,
+            env=self.env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(compile_result.returncode, 0, compile_result.stdout + compile_result.stderr)
+
+        import_result = self.run_python(
+            """
+from app.main import app
+assert any(route.path == '/api/v1/products/' for route in app.routes)
+            """
+        )
+        self.assertEqual(import_result.returncode, 0, import_result.stdout + import_result.stderr)
+
+    def test_generated_app_exposes_standard_oauth2_and_health_routes(self):
+        result = self.run_python(
+            """
+from app.main import app
+
+paths = app.openapi()['paths']
+assert '/api/v1/auth/token' in paths
+assert '/api/v1/auth/login' in paths
+assert '/healthz' in paths
+assert '/readyz' in paths
+security = paths['/api/v1/user/']['get']['security']
+assert security and security[0].get('OAuth2PasswordBearer') == []
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_repository_session_is_local_to_each_execution_context(self):
         from fastie.repositories.implements.repository import Repository

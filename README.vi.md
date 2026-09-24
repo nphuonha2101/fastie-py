@@ -1,119 +1,90 @@
 # Fastie (Tiếng Việt)
 
-**Fastie** là một web framework hiện đại dựa trên **FastAPI**, được thiết kế với triết lý của **Laravel Artisan**. Fastie cung cấp cấu trúc dự án chuẩn mực, hệ thống Dependency Injection mạnh mẽ và bộ công cụ CLI chuyên nghiệp để tăng tốc quá trình phát hành ứng dụng.
+Fastie là nền tảng backend dựa trên **FastAPI**, ưu tiên convention và tốc độ
+dev. Project mới sinh ra dùng FastAPI thuần: `APIRouter`, `Depends(get_db)`,
+SQLAlchemy, Pydantic và migration tường minh. Controller/service/repository và
+DI decorator vẫn được giữ để tương thích app cũ, nhưng không bắt buộc dùng.
 
 Tiếng Anh: [English](README.md)
 
-[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## Có sẵn
 
-## Tính năng chính
+- Router FastAPI và SQLAlchemy session theo từng request.
+- OAuth2 password flow, bearer token, kiểm tra claim bằng PyJWT và hash mật khẩu
+  Argon2 qua `pwdlib` (vẫn verify bcrypt cũ và tự nâng hash sau login thành công).
+- Alembic migration có kiểm tra một head duy nhất và schema drift.
+- `fastie make resource` tạo model, schema và CRUD router.
+- Soft delete trong repository base tùy chọn.
+- Rate limit dùng Redis khi cấu hình `REDIS_URL`.
 
-- **Clean Architecture**: Tách biệt logic nghiệp vụ thông qua Repository & Service layer.
-- **Dependency Injection**: Quản lý phụ thuộc tự động với Decorators (`@inject`, `@controller`).
-- **Fastie CLI**: Bộ công cụ dòng lệnh giúp tạo boilerplate code và quản lý database.
-- **Soft Delete**: Hỗ trợ xóa mềm tích hợp sẵn trong lớp Repository cơ bản.
-- **Modern UI**: Giao diện dòng lệnh trực quan và chuyên nghiệp.
-
-## Cài đặt
-
-Cài đặt thông qua pip:
+## Bắt đầu nhanh
 
 ```bash
 pip install fastie-py
-```
-
-Khởi tạo dự án mới:
-
-```bash
-fastie new my_project
+fastie new my_project --database sqlite
 cd my_project
+pip install -r requirements.txt
+fastie db migrate
+fastie dev
 ```
 
-## CLI Reference
+API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
+`POST /api/v1/auth/token`, nhận form `username` và `password`.
+`/api/v1/auth/login` vẫn có để client JSON dùng tiện hơn.
 
-### Dự án & Server
-- `fastie new <name>`: Khởi tạo dự án mới.
-- `fastie serve`: Chạy server phát triển (auto-reload).
-- `fastie routes`: Liệt kê tất cả route hiện có.
-
-### Code Generation (make)
-- `fastie make controller <Name>`: Tạo Controller mới.
-- `fastie make service <Name>`: Tạo Service mới.
-- `fastie make repository <Name>`: Tạo Repository mới.
-- `fastie make model <Name>`: Tạo SQLAlchemy Model.
-- `fastie make migration <Name>`: Tạo file migration.
-
-### Database (db)
-- `fastie db migrate`: Thực thi migration.
-- `fastie db rollback`: Quay lại migration trước ở môi trường development; production cần `--force`.
-- `fastie db reset`: Xóa và dựng lại database, chỉ cho development.
-- `fastie db status`: Xem trạng thái database.
-- `fastie db check`: Kiểm tra migration graph chỉ có một head và schema không lệch model.
-
-### Quy trình migration
-
-Mỗi migration cần được tạo, review và kiểm tra trước khi áp dụng:
+## Tạo resource
 
 ```bash
-fastie make migration add_profile_fields --auto
+fastie make resource Product --fields "name:str,price:decimal,is_active:bool"
+fastie make migration add_products_table --auto
 fastie db check
 fastie db migrate
 ```
 
-Fastie yêu cầu migration có một head duy nhất. Nếu các branch song song tạo nhiều head,
-cần merge rõ ràng trước khi migrate hoặc tạo migration tiếp theo:
+Lệnh này tạo model SQLAlchemy, schema create/update/response, CRUD router
+FastAPI và tự đăng ký router vào project mới. Vẫn nên review code và migration
+trước khi chạy production.
 
-```bash
-alembic merge -m "merge migration heads" <head-one> <head-two>
-fastie db check
+## CLI chính
+
+- `fastie new <name>`: Tạo project.
+- `fastie dev`: Chạy Uvicorn có auto-reload trên localhost.
+- `fastie serve`: Chạy Uvicorn không auto-reload mặc định.
+- `fastie routes`: Liệt kê route.
+- `fastie make resource <Name>`: Tạo luồng CRUD mặc định.
+- `fastie make model <Name>`: Chỉ tạo model.
+- `fastie make migration <Name>`: Tạo migration để review.
+- `fastie db migrate`: Apply migration.
+- `fastie db check`: Kiểm tra migration graph và schema drift.
+- `fastie db status`: Xem trạng thái migration.
+- `fastie db rollback`: Rollback ở development; production cần `--force`.
+- `fastie db reset`: Reset database ngoài production.
+
+Production nên chạy `fastie db check` và `fastie db migrate` như các bước riêng
+trong deploy trước khi rollout app. App không tự chạy migration lúc startup.
+
+## Cấu hình auth
+
+```dotenv
+JWT_SECRET=<secret ngẫu nhiên tối thiểu 32 ký tự>
+JWT_ALGORITHM=HS256
+JWT_ISSUER=fastie
+JWT_AUDIENCE=fastie-api
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+CORS_ALLOWED_ORIGINS=https://api.example.com
+REDIS_URL=redis://localhost:6379/0
 ```
 
-Production nên chạy `fastie db migrate` như một bước riêng trong deploy trước khi rollout ứng dụng.
-Ứng dụng không tự chạy migration khi startup; rollback/reset destructive không nằm trong workflow production.
+JWT chỉ được ký, không được mã hóa; không đưa password hoặc dữ liệu nhạy cảm
+vào payload. Khi cần scale lớn hơn, có thể thay wrapper JWT bằng OIDC provider
+và JWKS mà không phải đổi hình dạng dependency của route.
 
-Trong production, cần cấu hình `JWT_SECRET` là chuỗi ngẫu nhiên tối thiểu 32 ký tự, khai báo rõ
-`CORS_ALLOWED_ORIGINS`, và cung cấp `REDIS_URL` để rate limit được chia sẻ giữa các worker.
+## Tương thích app cũ
 
-## Ví dụ sử dụng
-
-### Dependency Injection
-
-```python
-@controller
-@inject
-class UserController(BaseController):
-    def __init__(self, user_service: IUserService):
-        self.user_service = user_service
-        
-    def define_routes(self):
-        self.router.get("/")(self.index)
-
-    async def index(self):
-        return self.success(content=self.user_service.get_all())
-```
-
-### Soft Delete
-
-```python
-# Xóa mềm
-self.repository.delete(id)
-
-# Khôi phục
-self.repository.restore(id)
-
-# Lấy dữ liệu bao gồm cả mục đã xóa
-items = self.repository.get_all(with_trash=True)
-```
-
-## Đóng góp
-
-Mọi đóng góp nhằm cải thiện Fastie đều được trân trọng! Vui lòng fork repository và tạo pull request.
+Fastie vẫn giữ `BaseController`, `Service`, `Repository`, `DbContext` và DI
+decorator để migrate từng phần. Với feature mới, nên bắt đầu bằng router và
+dependency; chỉ thêm service/repository khi business logic thực sự cần.
 
 ## License
 
-Phát hành dưới giấy phép **MIT License**. Xem chi tiết tại [LICENSE](LICENSE).
-
----
-Sản phẩm được phát triển bởi **Phuong Nha Nguyen** với sự cộng tác của **Antigravity (Google DeepMind)**.
+MIT License. Xem [LICENSE](LICENSE).

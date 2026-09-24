@@ -6,6 +6,8 @@ registry = get_registry()
 
 @inject
 class DbContext:
+    """Compatibility unit-of-work wrapper; new routes should use ``get_db``."""
+
     def __init__(self, database: DatabaseInfrastructure):
         self.database = database
         self.session = None
