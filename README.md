@@ -14,8 +14,7 @@ Vietnamese: [Tiếng Việt](README.vi.md)
 
 - FastAPI-first generated application with request-scoped SQLAlchemy sessions.
 - OAuth2 password flow with bearer tokens, PyJWT claim validation, and Argon2
-  password hashing through `pwdlib` (with legacy bcrypt verification and
-  automatic upgrade after a successful login).
+  password hashing through `pwdlib`.
 - SQLAlchemy/Alembic migrations with a single-head check and schema drift check.
 - `fastie make resource` for a model, Pydantic schemas, and a CRUD router.
 - Soft-delete fields on the shared model base.
@@ -32,10 +31,9 @@ fastie db migrate
 fastie dev
 ```
 
-The generated API is available under `/api/v1`. The standard OAuth2 token
-endpoint is `POST /api/v1/auth/token` with form fields `username` and
-`password`; `/api/v1/auth/login` is also kept as a JSON-friendly convenience.
-Both return a short-lived access token and a rotating refresh token.
+The generated API is available under `/api/v1`. The OAuth2 token endpoint is
+`POST /api/v1/auth/token` with form fields `username` and `password`. It
+returns a short-lived access token and a rotating refresh token.
 
 For a ready-to-run local container stack with PostgreSQL, Redis, a non-root
 application container, and a one-shot migration service:

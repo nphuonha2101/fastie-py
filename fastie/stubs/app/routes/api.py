@@ -23,7 +23,6 @@ from fastie.middlewares.rate_limit_middleware import RateLimitMiddleware
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
 from app.schemas.models.user.user_create_schema import UserCreateSchema
-from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
 from app.schemas.requests.refresh_token.refresh_token_request_schema import RefreshTokenRequestSchema
 from app.schemas.responses.user.user_response_schema import UserResponseSchema
 
@@ -181,28 +180,6 @@ def token(
         "refresh_token": refresh_token,
         "token_type": "bearer",
     }
-
-
-@auth_router.post(
-    "/login",
-    summary="User Login",
-)
-def login(
-    request: AccessTokenRequestSchema,
-    db: Session = Depends(get_db),
-    _: dict = Depends(auth_rate_limit_with_headers),
-):
-    user, access_token, refresh_token = _issue_token(request.email, request.password, db)
-    return _success(
-        data={
-            "message": "Login successful",
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "bearer",
-            "user": UserResponseSchema.model_validate(user),
-        },
-        message="Login successful",
-    )
 
 
 @auth_router.post("/refresh", summary="Refresh Access Token")

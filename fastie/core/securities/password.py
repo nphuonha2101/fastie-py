@@ -5,12 +5,10 @@ import logging
 from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
 from pwdlib.hashers.argon2 import Argon2Hasher
-from pwdlib.hashers.bcrypt import BcryptHasher
 
 logger = logging.getLogger(__name__)
-# Argon2 is always used for new passwords. Bcrypt remains in the verifier so
-# existing Fastie installations can migrate hashes on the next password change.
-password_hash = PasswordHash((Argon2Hasher(), BcryptHasher()))
+# Argon2 is the only supported password hash for new applications.
+password_hash = PasswordHash((Argon2Hasher(),))
 
 
 def __hash_password__(password: str) -> str:

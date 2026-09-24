@@ -1191,7 +1191,7 @@ def _show_fallback_routes():
         ("GET", "/docs", "API Documentation"),
         ("GET", "/redoc", "ReDoc Documentation"),
         ("GET", "/openapi.json", "OpenAPI Schema"),
-        ("POST", "/auth/login", "User Login"),
+        ("POST", "/auth/token", "OAuth2 Access Token"),
         ("GET", "/auth/greet", "Greeting Endpoint"),
         ("GET", "/user/", "Get All Users"),
         ("POST", "/user/register", "Register User"),

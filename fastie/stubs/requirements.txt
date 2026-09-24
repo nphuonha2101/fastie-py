@@ -14,7 +14,7 @@ redis>=5,<6
 
 # Authentication & Security  
 pyjwt
-pwdlib[argon2,bcrypt]
+pwdlib[argon2]
 email-validator
 
 # Template Engine

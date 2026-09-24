@@ -10,7 +10,7 @@ Tiếng Anh: [English](README.md)
 
 - Router FastAPI và SQLAlchemy session theo từng request.
 - OAuth2 password flow, bearer token, kiểm tra claim bằng PyJWT và hash mật khẩu
-  Argon2 qua `pwdlib` (vẫn verify bcrypt cũ và tự nâng hash sau login thành công).
+  Argon2 qua `pwdlib`.
 - Alembic migration có kiểm tra một head duy nhất và schema drift.
 - `fastie make resource` tạo model, schema và CRUD router.
 - Trường soft delete trong model base dùng chung.
@@ -29,8 +29,7 @@ fastie dev
 
 API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 `POST /api/v1/auth/token`, nhận form `username` và `password`.
-`/api/v1/auth/login` vẫn có để client JSON dùng tiện hơn.
-Hai endpoint trả về access token ngắn hạn và refresh token có rotation.
+Endpoint trả về access token ngắn hạn và refresh token có rotation.
 
 Để tạo nhanh stack Docker gồm PostgreSQL, Redis, application container chạy
 non-root và một service migration chạy trước API:

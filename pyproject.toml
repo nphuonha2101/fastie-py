@@ -28,7 +28,7 @@ dependencies = [
     "alembic",
     "pyjwt",
     "redis>=5,<6",
-    "pwdlib[argon2,bcrypt]",
+    "pwdlib[argon2]",
     "email-validator",
     "mako",
     "click",

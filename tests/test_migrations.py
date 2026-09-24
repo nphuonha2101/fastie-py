@@ -168,11 +168,10 @@ class MigrationWorkflowTests(unittest.TestCase):
             """
 from app.main import app
 from app.models.user import User
-from app.routes.api import get_current_user, login, logout, refresh, register_user
+from app.routes.api import get_current_user, logout, refresh, register_user, token as issue_token
 from app.schemas.models.user.user_create_schema import UserCreateSchema
-from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
 from app.schemas.requests.refresh_token.refresh_token_request_schema import RefreshTokenRequestSchema
-import bcrypt
+from fastapi.security import OAuth2PasswordRequestForm
 from fastie.core.securities.jwt import Jwt
 from fastie.infrastructures.database.dependencies import get_database
 
@@ -189,12 +188,12 @@ assert stored_hash.startswith('$argon2')
 create_db.close()
 
 login_db = database.get_session()
-login_response = login(AccessTokenRequestSchema(
-    email='test@example.com',
+login_response = issue_token(OAuth2PasswordRequestForm(
+    username='test@example.com',
     password='correct-horse-battery-staple',
 ), login_db)
-token = login_response['data']['access_token']
-refresh_token = login_response['data']['refresh_token']
+token = login_response['access_token']
+refresh_token = login_response['refresh_token']
 payload = Jwt.decode_token(token)
 current_user = get_current_user(token, login_db)
 assert current_user.id == created_id
@@ -211,19 +210,6 @@ else:
     raise AssertionError('Refresh token rotation did not revoke the old token')
 logout(RefreshTokenRequestSchema(refresh_token=rotated['refresh_token']), login_db)
 
-legacy = User(
-    name='Legacy User',
-    email='legacy@example.com',
-    password=bcrypt.hashpw(b'legacy-password', bcrypt.gensalt()).decode(),
-)
-login_db.add(legacy)
-login_db.commit()
-legacy_id = legacy.id
-login(AccessTokenRequestSchema(
-    email='legacy@example.com',
-    password='legacy-password',
-), login_db)
-assert login_db.query(User).filter(User.id == legacy_id).one().password.startswith('$argon2')
 login_db.close()
             """
         )
@@ -279,7 +265,6 @@ from app.main import app
 
 paths = app.openapi()['paths']
 assert '/api/v1/auth/token' in paths
-assert '/api/v1/auth/login' in paths
 assert '/api/v1/auth/refresh' in paths
 assert '/api/v1/auth/logout' in paths
 assert '/healthz' in paths
