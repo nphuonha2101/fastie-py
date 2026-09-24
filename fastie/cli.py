@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastie.core.utils.console import fastie_console
 
 logger = logging.getLogger(__name__)
+FASTIE_VERSION = '0.0.1a1'
 
 # Import template engine
 try:
@@ -88,8 +89,9 @@ def _environment_name():
 def _is_production():
     return _environment_name() in {'prod', 'production'}
 
+
 @click.group(cls=FastieGroup, invoke_without_command=True)
-@click.version_option(version='0.0.1a1', prog_name='Fastie CLI')
+@click.version_option(version=FASTIE_VERSION, prog_name='Fastie CLI')
 def cli():
     """Fastie CLI for convention-driven FastAPI projects."""
     # Add current directory to path so it can find 'app'
@@ -97,6 +99,59 @@ def cli():
     
     if len(sys.argv) == 1:
         fastie_console.print_banner()
+
+
+@cli.group(name='setup')
+def setup():
+    """Generate deployment and development setup files."""
+    pass
+
+
+@setup.command(name='docker')
+@click.option(
+    '--database',
+    type=click.Choice(['postgres', 'mysql'], case_sensitive=False),
+    default='postgres',
+    show_default=True,
+    help='Database service to include in the Docker Compose stack.',
+)
+@click.option(
+    '--workers',
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help='Default number of Uvicorn workers for the application container.',
+)
+@click.option('--force', is_flag=True, help='Overwrite existing Docker setup files.')
+def setup_docker(database, workers, force):
+    """Generate a production-oriented Docker Compose stack."""
+    project_root = Path.cwd()
+    database = database.lower()
+    files = _docker_setup_files(database, workers)
+
+    if not (project_root / 'requirements.txt').is_file():
+        raise click.ClickException(
+            "requirements.txt was not found. Run this command from a generated project root."
+        )
+
+    existing = [str(path) for path in files if (project_root / path).exists()]
+    if existing and not force:
+        raise click.ClickException(
+            "Refusing to overwrite existing Docker setup files: "
+            + ', '.join(existing)
+            + '. Pass --force to replace them.'
+        )
+
+    for relative_path, content in files.items():
+        target = project_root / relative_path
+        target.write_text(content, encoding='utf-8')
+
+    fastie_console.success(
+        f"Docker setup generated for {database} in [bold]{project_root}[/bold]"
+    )
+    fastie_console.step("cp .env.docker.example .env.docker")
+    fastie_console.step("Edit .env.docker: secrets, domains, CORS, and proxy settings")
+    fastie_console.step("docker compose --env-file .env.docker up --build")
 
 
 
@@ -602,6 +657,207 @@ def install():
 # =============================================================================
 # TEMPLATE GENERATORS
 # =============================================================================
+
+def _docker_setup_files(database, workers):
+    """Build Docker deployment files for a generated Fastie project."""
+    if database == 'postgres':
+        database_service = """  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fastie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.docker}
+      POSTGRES_DB: ${POSTGRES_DB:-fastie}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-fastie} -d $${POSTGRES_DB:-fastie}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+"""
+        database_url = (
+            "postgresql+psycopg2://${POSTGRES_USER:-fastie}:"
+            "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.docker}@"
+            "postgres:5432/${POSTGRES_DB:-fastie}"
+        )
+        volume_name = 'postgres_data'
+        database_dependency = 'postgres'
+        env_content = f"""# Docker deployment settings
+# Keep this file local. Use a secret manager for production credentials.
+ENVIRONMENT=production
+POSTGRES_USER=fastie
+POSTGRES_PASSWORD=change-this-password
+POSTGRES_DB=fastie
+
+# Fastie application security
+JWT_SECRET=replace-with-a-random-secret-at-least-32-characters-long
+JWT_ALGORITHM=HS256
+JWT_ISSUER=fastie
+JWT_AUDIENCE=fastie-api
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=30
+
+# Replace these values with the real public origins and hostnames.
+CORS_ALLOWED_ORIGINS=http://localhost:8000
+ALLOWED_HOSTS=localhost,127.0.0.1
+TRUSTED_PROXY_IPS=
+FORWARDED_ALLOW_IPS=127.0.0.1
+WORKERS={workers}
+"""
+    else:
+        database_service = """  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fastie}
+      MYSQL_USER: ${MYSQL_USER:-fastie}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env.docker}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env.docker}
+    healthcheck:
+      test: ["CMD-SHELL", 'mysqladmin ping -h 127.0.0.1 -u root -p"$${MYSQL_ROOT_PASSWORD}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - mysql_data:/var/lib/mysql
+"""
+        database_url = (
+            "mysql+pymysql://${MYSQL_USER:-fastie}:"
+            "${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env.docker}@"
+            "mysql:3306/${MYSQL_DATABASE:-fastie}"
+        )
+        volume_name = 'mysql_data'
+        database_dependency = 'mysql'
+        env_content = f"""# Docker deployment settings
+# Keep this file local. Use a secret manager for production credentials.
+ENVIRONMENT=production
+MYSQL_DATABASE=fastie
+MYSQL_USER=fastie
+MYSQL_PASSWORD=change-this-password
+MYSQL_ROOT_PASSWORD=change-this-root-password
+
+# Fastie application security
+JWT_SECRET=replace-with-a-random-secret-at-least-32-characters-long
+JWT_ALGORITHM=HS256
+JWT_ISSUER=fastie
+JWT_AUDIENCE=fastie-api
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=30
+
+# Replace these values with the real public origins and hostnames.
+CORS_ALLOWED_ORIGINS=http://localhost:8000
+ALLOWED_HOSTS=localhost,127.0.0.1
+TRUSTED_PROXY_IPS=
+FORWARDED_ALLOW_IPS=127.0.0.1
+WORKERS={workers}
+"""
+
+    migration_service = f"""  migrate:
+    build:
+      context: .
+      args:
+        FASTIE_PACKAGE: ${{FASTIE_PACKAGE:-fastie-py=={FASTIE_VERSION}}}
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: {database_url}
+    depends_on:
+      {database_dependency}:
+        condition: service_healthy
+    command: ["fastie", "db", "migrate"]
+    restart: "no"
+
+"""
+
+    compose = f"""services:
+  app:
+    build:
+      context: .
+      args:
+        FASTIE_PACKAGE: ${{FASTIE_PACKAGE:-fastie-py=={FASTIE_VERSION}}}
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: {database_url}
+      REDIS_URL: redis://redis:6379/0
+      WORKERS: ${{WORKERS:-{workers}}}
+      FORWARDED_ALLOW_IPS: ${{FORWARDED_ALLOW_IPS:-127.0.0.1}}
+    ports:
+      - "8000:8000"
+    depends_on:
+      {database_dependency}:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+{migration_service}{database_service}  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - redis_data:/data
+
+volumes:
+  {volume_name}:
+  redis_data:
+"""
+
+    dockerfile = f"""FROM python:3.12-slim
+
+ARG FASTIE_PACKAGE=fastie-py=={FASTIE_VERSION}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \\
+    PYTHONUNBUFFERED=1 \\
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
+
+COPY requirements.txt .
+RUN python -m pip install --upgrade pip && \\
+    python -m pip install "${{FASTIE_PACKAGE}}" -r requirements.txt
+
+COPY . .
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \\
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
+
+CMD ["sh", "-c", "fastie serve --host 0.0.0.0 --port 8000 --workers ${{WORKERS:-{workers}}} --proxy-headers --forwarded-allow-ips ${{FORWARDED_ALLOW_IPS:-127.0.0.1}}"]
+"""
+
+    dockerignore = """.env
+.env.*
+!.env.docker.example
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+tests/
+app.db
+"""
+
+    return {
+        Path('Dockerfile'): dockerfile,
+        Path('docker-compose.yml'): compose,
+        Path('.dockerignore'): dockerignore,
+        Path('.env.docker.example'): env_content,
+    }
+
 
 def _generate_env_content(database):
     """Generate .env file content"""

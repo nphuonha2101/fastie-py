@@ -116,6 +116,36 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("server database", result.stdout + result.stderr)
 
+    def test_docker_setup_generates_stack_without_overwriting(self):
+        result = self.run_fastie("setup", "docker", "--database", "postgres")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        expected_files = {
+            "Dockerfile",
+            "docker-compose.yml",
+            ".dockerignore",
+            ".env.docker.example",
+        }
+        self.assertEqual(
+            {path.name for path in self.project_dir.iterdir() if path.name in expected_files},
+            expected_files,
+        )
+        compose = (self.project_dir / "docker-compose.yml").read_text()
+        self.assertIn("postgres:16-alpine", compose)
+        self.assertIn("redis:7-alpine", compose)
+        self.assertIn('"fastie", "db", "migrate"', compose)
+        self.assertIn("service_completed_successfully", compose)
+
+        repeat = self.run_fastie("setup", "docker")
+        self.assertNotEqual(repeat.returncode, 0)
+        self.assertIn("Refusing to overwrite", repeat.stdout + repeat.stderr)
+
+        mysql = self.run_fastie("setup", "docker", "--database", "mysql", "--workers", "4", "--force")
+        self.assertEqual(mysql.returncode, 0, mysql.stdout + mysql.stderr)
+        mysql_compose = (self.project_dir / "docker-compose.yml").read_text()
+        self.assertIn("mysql:8.4", mysql_compose)
+        self.assertIn("WORKERS=4", (self.project_dir / ".env.docker.example").read_text())
+
     def test_generated_app_authenticates_database_users(self):
         migrate = self.run_fastie("db", "migrate")
         self.assertEqual(migrate.returncode, 0, migrate.stdout + migrate.stderr)

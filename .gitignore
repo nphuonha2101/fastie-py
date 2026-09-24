@@ -41,6 +41,7 @@ media/
 # dotenv files
 .env
 .env.*
+!.env.docker.example
 
 # VSCode
 .vscode/

@@ -32,6 +32,19 @@ API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 `/api/v1/auth/login` vẫn có để client JSON dùng tiện hơn.
 Hai endpoint trả về access token ngắn hạn và refresh token có rotation.
 
+Để tạo nhanh stack Docker gồm PostgreSQL, Redis, application container chạy
+non-root và một service migration chạy trước API:
+
+```bash
+fastie setup docker --database postgres
+cp .env.docker.example .env.docker
+# Sửa secret, domain và CORS trong .env.docker.
+docker compose --env-file .env.docker up --build
+```
+
+Dùng `--database mysql` nếu chọn MySQL. Hãy review các giá trị được sinh ra và
+dùng secret manager cho credential production thật.
+
 ## Tạo resource
 
 ```bash
@@ -48,6 +61,7 @@ trước khi chạy production.
 ## CLI chính
 
 - `fastie new <name>`: Tạo project.
+- `fastie setup docker`: Tạo Dockerfile, Compose stack và template biến môi trường Docker.
 - `fastie dev`: Chạy Uvicorn có auto-reload trên localhost.
 - `fastie serve`: Chạy Uvicorn không auto-reload mặc định.
 - `fastie routes`: Liệt kê route.

@@ -37,6 +37,20 @@ endpoint is `POST /api/v1/auth/token` with form fields `username` and
 `password`; `/api/v1/auth/login` is also kept as a JSON-friendly convenience.
 Both return a short-lived access token and a rotating refresh token.
 
+For a ready-to-run local container stack with PostgreSQL, Redis, a non-root
+application container, and a one-shot migration service:
+
+```bash
+fastie setup docker --database postgres
+cp .env.docker.example .env.docker
+# Edit .env.docker before starting the stack.
+docker compose --env-file .env.docker up --build
+```
+
+Use `--database mysql` for MySQL. The generated Compose stack runs migrations
+in a separate service before the API container starts; review the generated
+environment values and use a secret manager for real production credentials.
+
 ## Generate a resource
 
 ```bash
@@ -55,6 +69,7 @@ project. Review generated code before applying the migration.
 ### Project and server
 
 - `fastie new <name>`: Create a project.
+- `fastie setup docker`: Generate a Dockerfile, Compose stack, and Docker environment template.
 - `fastie dev`: Run Uvicorn with auto-reload on localhost.
 - `fastie serve`: Run Uvicorn without auto-reload by default.
 - `fastie routes`: List application routes.
