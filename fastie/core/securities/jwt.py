@@ -10,7 +10,7 @@ from fastie.core.config.config import get_config
 
 
 class Jwt:
-    """Small compatibility wrapper around the standard PyJWT API."""
+    """Small wrapper around the standard PyJWT API."""
 
     @staticmethod
     def _settings():

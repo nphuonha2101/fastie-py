@@ -61,7 +61,7 @@ class FastieConsole:
         
         # Info Panel (Cyan background)
         status = Panel(
-            Text("FastAPI toolkit • Built by NPHUONHA & Antigravity • v0.0.1a1", style="bold black"),
+            Text("FastAPI toolkit - v0.0.1a1", style="bold black"),
             style="on #00E5FF", # Pure Neo-Brutalism Cyan
             box=box.SQUARE,
             border_style="black",
@@ -92,7 +92,7 @@ class FastieConsole:
 
     @staticmethod
     def step(message: str):
-        console.print(f" [bold #FFEF00]›[/bold #FFEF00] [dim white]{message}[/dim white]")
+        console.print(f" [dim white]{message}[/dim white]")
 
     @staticmethod
     def table(title: str, columns: list, rows: list):

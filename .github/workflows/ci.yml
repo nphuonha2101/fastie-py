@@ -28,7 +28,7 @@ jobs:
           python -m pip wheel . --no-deps --wheel-dir /tmp/fastie-wheel
           python -m pip install --force-reinstall --no-deps /tmp/fastie-wheel/*.whl
           cd /tmp
-          python -c "import fastie.core, fastie.repositories, fastie.cli"
+          python -c "import fastie.core, fastie.infrastructures.database, fastie.cli"
 
       - name: Run migration workflow tests
         run: python -m unittest discover -s tests -p 'test_*.py'

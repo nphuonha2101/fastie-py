@@ -1,8 +1,6 @@
 """Application routes.
 
-This is deliberately ordinary FastAPI code. Controllers and the legacy DI
-stack are still available, but a new project does not need them for its first
-endpoint.
+This is deliberately ordinary FastAPI code with explicit dependencies.
 """
 
 from functools import lru_cache
@@ -55,7 +53,7 @@ def _get_auth_rate_limiter() -> RateLimitMiddleware:
 
 
 async def auth_rate_limit(request: Request):
-    """Protect credential endpoints without coupling them to the DI registry."""
+    """Protect credential endpoints with the shared rate limiter."""
     return await _get_auth_rate_limiter().handle(request)
 
 

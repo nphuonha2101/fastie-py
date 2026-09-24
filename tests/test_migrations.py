@@ -3,7 +3,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 
@@ -166,16 +165,27 @@ login_db.close()
         self.assertEqual(auth_flow.returncode, 0, auth_flow.stdout + auth_flow.stderr)
 
     def test_resource_generator_creates_plain_fastapi_feature(self):
+        base_migrate = self.run_fastie("db", "migrate")
+        self.assertEqual(base_migrate.returncode, 0, base_migrate.stdout + base_migrate.stderr)
+
         result = self.run_fastie(
             "make",
             "resource",
             "Product",
             "--fields",
             "name:str,price:decimal,is_active:bool",
+            "--migrate",
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((self.project_dir / "app/models/product.py").is_file())
         self.assertTrue((self.project_dir / "app/api/v1/routes/product.py").is_file())
+        self.assertEqual(
+            len(list((self.project_dir / "alembic/versions").glob("*.py"))),
+            2,
+        )
+
+        migrate = self.run_fastie("db", "migrate")
+        self.assertEqual(migrate.returncode, 0, migrate.stdout + migrate.stderr)
 
         routes = (self.project_dir / "app/routes/api.py").read_text()
         self.assertIn("product_router", routes)
@@ -212,28 +222,6 @@ assert security and security[0].get('OAuth2PasswordBearer') == []
             """
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_repository_session_is_local_to_each_execution_context(self):
-        from fastie.repositories.implements.repository import Repository
-
-        repository = Repository(object)
-        barrier = threading.Barrier(2)
-        observed = []
-
-        def worker():
-            session = object()
-            repository.set_session(session)
-            barrier.wait()
-            observed.append(repository.session is session)
-
-        threads = [threading.Thread(target=worker) for _ in range(2)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        self.assertEqual(observed, [True, True])
-
 
 if __name__ == "__main__":
     unittest.main()

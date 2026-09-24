@@ -1,10 +1,8 @@
 # Fastie
 
-Fastie is a convention-driven backend starter built on **FastAPI**. Its
-default project is ordinary FastAPI code: `APIRouter`, `Depends(get_db)`,
-SQLAlchemy, Pydantic, and explicit migrations. The older controller/service/
-repository and decorator DI APIs remain available for existing projects, but
-they are optional compatibility features.
+Fastie is a convention-driven backend starter built on **FastAPI**. Generated
+projects use ordinary FastAPI code: `APIRouter`, `Depends(get_db)`, SQLAlchemy,
+Pydantic, and explicit migrations.
 
 Vietnamese: [Tiếng Việt](README.vi.md)
 
@@ -20,7 +18,7 @@ Vietnamese: [Tiếng Việt](README.vi.md)
   automatic upgrade after a successful login).
 - SQLAlchemy/Alembic migrations with a single-head check and schema drift check.
 - `fastie make resource` for a model, Pydantic schemas, and a CRUD router.
-- Soft-delete support in the optional base repository.
+- Soft-delete fields on the shared model base.
 - Redis-backed rate limiting when `REDIS_URL` is configured.
 
 ## Quick start
@@ -65,8 +63,6 @@ project. Review generated code before applying the migration.
 - `fastie make resource <Name>`: Generate the default CRUD path.
 - `fastie make model <Name>`: Generate only a model.
 - `fastie make migration <Name>`: Create a reviewed Alembic revision.
-- `fastie make controller/service/repository <Name>`: Legacy APIs for projects
-  that deliberately use the compatibility architecture.
 
 ### Database
 
@@ -98,13 +94,6 @@ JWT payloads are signed, not encrypted. Do not put passwords or sensitive
 personal data in them. For a larger deployment, the JWT wrapper can be
 replaced with an external OIDC provider and JWKS validation without changing
 the route dependency shape.
-
-## Compatibility architecture
-
-Fastie still ships `BaseController`, `Service`, `Repository`, `DbContext`, and
-decorator-based DI so existing applications can migrate incrementally. New
-features should start with a router and dependencies; introduce a service or
-repository only when the business logic actually benefits from one.
 
 ## License
 

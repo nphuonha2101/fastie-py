@@ -2,8 +2,7 @@
 
 Fastie là nền tảng backend dựa trên **FastAPI**, ưu tiên convention và tốc độ
 dev. Project mới sinh ra dùng FastAPI thuần: `APIRouter`, `Depends(get_db)`,
-SQLAlchemy, Pydantic và migration tường minh. Controller/service/repository và
-DI decorator vẫn được giữ để tương thích app cũ, nhưng không bắt buộc dùng.
+SQLAlchemy, Pydantic và migration tường minh.
 
 Tiếng Anh: [English](README.md)
 
@@ -14,7 +13,7 @@ Tiếng Anh: [English](README.md)
   Argon2 qua `pwdlib` (vẫn verify bcrypt cũ và tự nâng hash sau login thành công).
 - Alembic migration có kiểm tra một head duy nhất và schema drift.
 - `fastie make resource` tạo model, schema và CRUD router.
-- Soft delete trong repository base tùy chọn.
+- Trường soft delete trong model base dùng chung.
 - Rate limit dùng Redis khi cấu hình `REDIS_URL`.
 
 ## Bắt đầu nhanh
@@ -78,12 +77,6 @@ REDIS_URL=redis://localhost:6379/0
 JWT chỉ được ký, không được mã hóa; không đưa password hoặc dữ liệu nhạy cảm
 vào payload. Khi cần scale lớn hơn, có thể thay wrapper JWT bằng OIDC provider
 và JWKS mà không phải đổi hình dạng dependency của route.
-
-## Tương thích app cũ
-
-Fastie vẫn giữ `BaseController`, `Service`, `Repository`, `DbContext` và DI
-decorator để migrate từng phần. Với feature mới, nên bắt đầu bằng router và
-dependency; chỉ thêm service/repository khi business logic thực sự cần.
 
 ## License
 

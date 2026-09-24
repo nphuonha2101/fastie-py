@@ -2,7 +2,7 @@
 
 The dependency is intentionally small: one request gets one SQLAlchemy
 session, and the route owns its transaction boundary by calling commit or
-rollback.  The older ``DbContext`` API remains available for compatibility.
+rollback.
 """
 
 from collections.abc import Generator

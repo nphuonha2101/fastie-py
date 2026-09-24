@@ -3,12 +3,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 import logging
 
-from fastie.core.decorators.di import infrastructure
-
 logger = logging.getLogger(__name__)
 Base = declarative_base()
 
-@infrastructure
 class DatabaseInfrastructure:
     def __init__(self):
         try:

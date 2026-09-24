@@ -7,12 +7,7 @@ from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.requests import Request
 
-from fastie.middlewares.abstract_middleware import AbstractMiddleware
-from fastie.core.decorators.di import component
-
-
-@component
-class RateLimitMiddleware(AbstractMiddleware):
+class RateLimitMiddleware:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.request_counts = defaultdict(list)

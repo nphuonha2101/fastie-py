@@ -4,10 +4,8 @@ from pathlib import Path
 from dynaconf import Dynaconf
 from dotenv import load_dotenv
 
-from fastie.core.decorators import component_decorator
 from fastie.core.paths.config import __config_path__
 
-@component_decorator
 class Config:
     def __init__(self):
         config_dir = __config_path__()
@@ -73,5 +71,5 @@ class Config:
 
 @lru_cache(maxsize=1)
 def get_config() -> Config:
-    """Return configuration without requiring the legacy DI bootstrap."""
+    """Return the process-local application configuration."""
     return Config()
