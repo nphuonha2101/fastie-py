@@ -146,6 +146,20 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertIn("mysql:8.4", mysql_compose)
         self.assertIn("WORKERS=4", (self.project_dir / ".env.docker.example").read_text())
 
+        local = self.run_fastie(
+            "setup",
+            "docker",
+            "--local-source",
+            str(PROJECT_ROOT),
+            "--force",
+        )
+        self.assertEqual(local.returncode, 0, local.stdout + local.stderr)
+        local_wheels = list((self.project_dir / ".fastie-local").glob("fastie_py-*.whl"))
+        self.assertTrue(local_wheels)
+        local_dockerfile = (self.project_dir / "Dockerfile").read_text()
+        self.assertIn("COPY .fastie-local/", local_dockerfile)
+        self.assertNotIn("ARG FASTIE_PACKAGE", local_dockerfile)
+
     def test_generated_app_authenticates_database_users(self):
         migrate = self.run_fastie("db", "migrate")
         self.assertEqual(migrate.returncode, 0, migrate.stdout + migrate.stderr)

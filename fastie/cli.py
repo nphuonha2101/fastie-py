@@ -122,8 +122,13 @@ def setup():
     show_default=True,
     help='Default number of Uvicorn workers for the application container.',
 )
+@click.option(
+    '--local-source',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, resolve_path=True, path_type=Path),
+    help='Build Fastie from a local source directory instead of installing it from PyPI.',
+)
 @click.option('--force', is_flag=True, help='Overwrite existing Docker setup files.')
-def setup_docker(database, workers, force):
+def setup_docker(database, workers, local_source, force):
     """Generate a production-oriented Docker Compose stack."""
     project_root = Path.cwd()
     database = database.lower()
@@ -142,6 +147,11 @@ def setup_docker(database, workers, force):
             + '. Pass --force to replace them.'
         )
 
+    local_wheel_name = None
+    if local_source:
+        local_wheel_name = _build_local_fastie_wheel(local_source, project_root)
+        files = _docker_setup_files(database, workers, local_wheel_name)
+
     for relative_path, content in files.items():
         target = project_root / relative_path
         target.write_text(content, encoding='utf-8')
@@ -149,6 +159,8 @@ def setup_docker(database, workers, force):
     fastie_console.success(
         f"Docker setup generated for {database} in [bold]{project_root}[/bold]"
     )
+    if local_wheel_name:
+        fastie_console.step(f"Using local Fastie wheel: .fastie-local/{local_wheel_name}")
     fastie_console.step("cp .env.docker.example .env.docker")
     fastie_console.step("Edit .env.docker: secrets, domains, CORS, and proxy settings")
     fastie_console.step("docker compose --env-file .env.docker up --build")
@@ -658,7 +670,48 @@ def install():
 # TEMPLATE GENERATORS
 # =============================================================================
 
-def _docker_setup_files(database, workers):
+def _build_local_fastie_wheel(source, project_root):
+    """Build a local Fastie wheel for a Docker build context."""
+    source = Path(source).resolve()
+    if not (source / 'pyproject.toml').is_file():
+        raise click.ClickException(
+            f"Local Fastie source does not contain pyproject.toml: {source}"
+        )
+
+    wheel_dir = project_root / '.fastie-local'
+    wheel_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        '-m',
+        'pip',
+        'wheel',
+        str(source),
+        '--no-deps',
+        '--no-build-isolation',
+        '--wheel-dir',
+        str(wheel_dir),
+    ]
+    try:
+        subprocess.run(command, check=True)
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            "Could not run pip to build the local Fastie wheel."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise click.ClickException(
+            f"Could not build the local Fastie wheel (exit code {exc.returncode})."
+        ) from exc
+
+    wheels = sorted(
+        wheel_dir.glob('fastie_py-*.whl'),
+        key=lambda path: path.stat().st_mtime,
+    )
+    if not wheels:
+        raise click.ClickException(f"No Fastie wheel was produced in {wheel_dir}.")
+    return wheels[-1].name
+
+
+def _docker_setup_files(database, workers, local_wheel_name=None):
     """Build Docker deployment files for a generated Fastie project."""
     if database == 'postgres':
         database_service = """  postgres:
@@ -751,12 +804,28 @@ FORWARDED_ALLOW_IPS=127.0.0.1
 WORKERS={workers}
 """
 
-    migration_service = f"""  migrate:
-    build:
+    if local_wheel_name:
+        build_block = """    build:
+      context: .
+"""
+        package_arg = ''
+        package_install = f"""COPY .fastie-local/{local_wheel_name} /tmp/fastie-py.whl
+RUN python -m pip install --upgrade pip && \\
+    python -m pip install /tmp/fastie-py.whl -r requirements.txt
+"""
+    else:
+        build_block = f"""    build:
       context: .
       args:
         FASTIE_PACKAGE: ${{FASTIE_PACKAGE:-fastie-py=={FASTIE_VERSION}}}
-    env_file:
+"""
+        package_arg = f'ARG FASTIE_PACKAGE=fastie-py=={FASTIE_VERSION}\n\n'
+        package_install = """RUN python -m pip install --upgrade pip && \\
+    python -m pip install \"${FASTIE_PACKAGE}\" -r requirements.txt
+"""
+
+    migration_service = f"""  migrate:
+{build_block}    env_file:
       - .env.docker
     environment:
       DATABASE_URL: {database_url}
@@ -770,11 +839,7 @@ WORKERS={workers}
 
     compose = f"""services:
   app:
-    build:
-      context: .
-      args:
-        FASTIE_PACKAGE: ${{FASTIE_PACKAGE:-fastie-py=={FASTIE_VERSION}}}
-    env_file:
+{build_block}    env_file:
       - .env.docker
     environment:
       DATABASE_URL: {database_url}
@@ -810,19 +875,16 @@ volumes:
 
     dockerfile = f"""FROM python:3.12-slim
 
-ARG FASTIE_PACKAGE=fastie-py=={FASTIE_VERSION}
+{package_arg}WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \\
     PYTHONUNBUFFERED=1 \\
     PIP_NO_CACHE_DIR=1
 
-WORKDIR /app
-
 RUN useradd --create-home --shell /usr/sbin/nologin appuser
 
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip && \\
-    python -m pip install "${{FASTIE_PACKAGE}}" -r requirements.txt
+{package_install}
 
 COPY . .
 RUN chown -R appuser:appuser /app

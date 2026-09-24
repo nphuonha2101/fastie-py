@@ -45,6 +45,13 @@ docker compose --env-file .env.docker up --build
 Dùng `--database mysql` nếu chọn MySQL. Hãy review các giá trị được sinh ra và
 dùng secret manager cho credential production thật.
 
+Nếu đang test source Fastie local chưa publish lên PyPI, truyền đường dẫn source
+vào command. Lệnh sẽ build wheel local trong `.fastie-local/`:
+
+```bash
+fastie setup docker --local-source ../fastie
+```
+
 ## Tạo resource
 
 ```bash
@@ -61,7 +68,7 @@ trước khi chạy production.
 ## CLI chính
 
 - `fastie new <name>`: Tạo project.
-- `fastie setup docker`: Tạo Dockerfile, Compose stack và template biến môi trường Docker.
+- `fastie setup docker`: Tạo Dockerfile, Compose stack và template biến môi trường Docker; dùng `--local-source <path>` để test source chưa publish.
 - `fastie dev`: Chạy Uvicorn có auto-reload trên localhost.
 - `fastie serve`: Chạy Uvicorn không auto-reload mặc định.
 - `fastie routes`: Liệt kê route.

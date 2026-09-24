@@ -50,6 +50,13 @@ docker compose --env-file .env.docker up --build
 Use `--database mysql` for MySQL. The generated Compose stack runs migrations
 in a separate service before the API container starts; review the generated
 environment values and use a secret manager for real production credentials.
+When testing an unpublished local Fastie checkout, point the command to its
+source directory; it builds a local wheel into `.fastie-local/` and does not
+download Fastie from PyPI:
+
+```bash
+fastie setup docker --local-source ../fastie
+```
 
 ## Generate a resource
 
@@ -69,7 +76,7 @@ project. Review generated code before applying the migration.
 ### Project and server
 
 - `fastie new <name>`: Create a project.
-- `fastie setup docker`: Generate a Dockerfile, Compose stack, and Docker environment template.
+- `fastie setup docker`: Generate a Dockerfile, Compose stack, and Docker environment template. Use `--local-source <path>` to test an unpublished checkout.
 - `fastie dev`: Run Uvicorn with auto-reload on localhost.
 - `fastie serve`: Run Uvicorn without auto-reload by default.
 - `fastie routes`: List application routes.
