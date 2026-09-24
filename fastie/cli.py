@@ -103,10 +103,16 @@ def cli():
 
 @cli.command()
 @click.argument('project_name')
-@click.option('--database', '-d', default='mysql', help='Database type (mysql, sqlite, postgres)')
-@click.option('--auth', is_flag=True, help='Deprecated: authentication is included by default')
+@click.option(
+    '--database',
+    '-d',
+    type=click.Choice(['sqlite', 'mysql', 'postgres'], case_sensitive=False),
+    default='sqlite',
+    show_default=True,
+    help='Database type',
+)
 @click.option('--path', '-p', help='Target directory path (default: current directory)')
-def new(project_name, database, auth, path):
+def new(project_name, database, path):
     """Create a new Fastie project"""
     fastie_console.info(f"Creating new Fastie project: [bold]{project_name}[/bold]")
     
@@ -409,9 +415,12 @@ def make_schema(name, schema_type):
 @click.option('--host', default='0.0.0.0', help='Host to bind')
 @click.option('--port', default=8000, help='Port to bind')
 @click.option('--reload', is_flag=True, help='Enable auto-reload')
-def serve(host, port, reload):
+@click.option('--workers', default=1, type=click.IntRange(min=1), show_default=True)
+@click.option('--proxy-headers/--no-proxy-headers', default=False)
+@click.option('--forwarded-allow-ips', default=None, help='Trusted proxy IPs for forwarded headers')
+def serve(host, port, reload, workers, proxy_headers, forwarded_allow_ips):
     """Start the application server."""
-    _serve(host, port, reload)
+    _serve(host, port, reload, workers, proxy_headers, forwarded_allow_ips)
 
 
 @cli.command()
@@ -419,17 +428,26 @@ def serve(host, port, reload):
 @click.option('--port', default=8000, help='Port to bind')
 def dev(host, port):
     """Start the development server with auto-reload."""
-    _serve(host, port, True)
+    _serve(host, port, True, 1, False, None)
 
 
-def _serve(host, port, reload):
+def _serve(host, port, reload, workers=1, proxy_headers=False, forwarded_allow_ips=None):
     """Run Uvicorn for the current application."""
+    if reload and workers != 1:
+        raise click.ClickException("--reload cannot be combined with more than one worker")
+
     fastie_console.print_banner()
     fastie_console.info(f"Starting server at [bold]http://{host}:{port}[/bold]")
     
     cmd = ['uvicorn', 'app.main:app', '--host', host, '--port', str(port)]
     if reload:
         cmd.append('--reload')
+    if workers > 1:
+        cmd.extend(['--workers', str(workers)])
+    if proxy_headers:
+        cmd.append('--proxy-headers')
+    if forwarded_allow_ips:
+        cmd.extend(['--forwarded-allow-ips', forwarded_allow_ips])
     
     try:
         subprocess.run(cmd)
@@ -587,6 +605,7 @@ def install():
 
 def _generate_env_content(database):
     """Generate .env file content"""
+    database = database.lower()
     if database == 'sqlite':
         db_url = "sqlite:///./app.db"
     elif database == 'postgres':
@@ -602,6 +621,7 @@ DATABASE_URL={db_url}
 # Deployment environment (development, staging, or production)
 ENVIRONMENT=development
 CORS_ALLOWED_ORIGINS=http://localhost:3000
+ALLOWED_HOSTS=localhost,127.0.0.1
 
 # JWT configuration (use a secret manager for production)
 JWT_SECRET={jwt_secret}
@@ -609,10 +629,16 @@ JWT_ALGORITHM=HS256
 JWT_ISSUER=fastie
 JWT_AUDIENCE=fastie-api
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=30
 REDIS_URL=
-
-# Application Settings
-DEBUG=True
+TRUSTED_PROXY_IPS=
+RATE_LIMIT_MAX_REQUESTS=100
+RATE_LIMIT_WINDOW_SECONDS=3600
+DB_POOL_SIZE=5
+DB_MAX_OVERFLOW=10
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+DB_ECHO=False
 """
 
 

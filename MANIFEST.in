@@ -1,6 +1,7 @@
 recursive-include fastie/templates *.mako
 recursive-include fastie/stubs *
 include README.md
+include uv.lock
 include requirements.txt
 global-exclude __pycache__
 global-exclude *.py[cod]

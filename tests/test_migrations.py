@@ -75,7 +75,7 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertEqual(repeat.returncode, 0, repeat.stdout + repeat.stderr)
 
     def test_multiple_heads_are_rejected_before_migration(self):
-        initial_revision = "043ea57085e0"
+        initial_revision = "7d2f8a1c4e90"
         first = self.run_alembic("revision", "-m", "branch_a", "--head", initial_revision)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
 
@@ -98,7 +98,7 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         revisions = sorted((self.project_dir / "alembic" / "versions").glob("*.py"))
-        self.assertEqual(len(revisions), 2)
+        self.assertEqual(len(revisions), 3)
         self.assertTrue(any("empty_migration_" in revision.name for revision in revisions))
 
     def test_production_rollback_is_blocked_without_force(self):
@@ -108,6 +108,14 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertNotEqual(rollback.returncode, 0)
         self.assertIn("Rollback is blocked in production", rollback.stdout + rollback.stderr)
 
+    def test_production_config_rejects_sqlite(self):
+        self.env["ENVIRONMENT"] = "production"
+        result = self.run_python(
+            "from fastie.core.config.config import get_config; get_config()"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("server database", result.stdout + result.stderr)
+
     def test_generated_app_authenticates_database_users(self):
         migrate = self.run_fastie("db", "migrate")
         self.assertEqual(migrate.returncode, 0, migrate.stdout + migrate.stderr)
@@ -116,9 +124,10 @@ class MigrationWorkflowTests(unittest.TestCase):
             """
 from app.main import app
 from app.models.user import User
-from app.routes.api import get_current_user, login, register_user
+from app.routes.api import get_current_user, login, logout, refresh, register_user
 from app.schemas.models.user.user_create_schema import UserCreateSchema
 from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
+from app.schemas.requests.refresh_token.refresh_token_request_schema import RefreshTokenRequestSchema
 import bcrypt
 from fastie.core.securities.jwt import Jwt
 from fastie.infrastructures.database.dependencies import get_database
@@ -141,10 +150,22 @@ login_response = login(AccessTokenRequestSchema(
     password='correct-horse-battery-staple',
 ), login_db)
 token = login_response['data']['access_token']
+refresh_token = login_response['data']['refresh_token']
 payload = Jwt.decode_token(token)
 current_user = get_current_user(token, login_db)
 assert current_user.id == created_id
 assert payload['sub'] == str(created_id)
+
+rotated = refresh(RefreshTokenRequestSchema(refresh_token=refresh_token), login_db)
+assert rotated['access_token']
+assert rotated['refresh_token'] != refresh_token
+try:
+    refresh(RefreshTokenRequestSchema(refresh_token=refresh_token), login_db)
+except Exception as exc:
+    assert getattr(exc, 'status_code', None) == 401
+else:
+    raise AssertionError('Refresh token rotation did not revoke the old token')
+logout(RefreshTokenRequestSchema(refresh_token=rotated['refresh_token']), login_db)
 
 legacy = User(
     name='Legacy User',
@@ -181,7 +202,7 @@ login_db.close()
         self.assertTrue((self.project_dir / "app/api/v1/routes/product.py").is_file())
         self.assertEqual(
             len(list((self.project_dir / "alembic/versions").glob("*.py"))),
-            2,
+            3,
         )
 
         migrate = self.run_fastie("db", "migrate")
@@ -215,6 +236,8 @@ from app.main import app
 paths = app.openapi()['paths']
 assert '/api/v1/auth/token' in paths
 assert '/api/v1/auth/login' in paths
+assert '/api/v1/auth/refresh' in paths
+assert '/api/v1/auth/logout' in paths
 assert '/healthz' in paths
 assert '/readyz' in paths
 security = paths['/api/v1/user/']['get']['security']

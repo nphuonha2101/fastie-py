@@ -10,4 +10,3 @@ class User(AbstractModel):
     password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     avatar = Column(String(255), nullable=True)
-    token = Column(String(255), nullable=True)

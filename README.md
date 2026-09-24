@@ -35,6 +35,7 @@ fastie dev
 The generated API is available under `/api/v1`. The standard OAuth2 token
 endpoint is `POST /api/v1/auth/token` with form fields `username` and
 `password`; `/api/v1/auth/login` is also kept as a JSON-friendly convenience.
+Both return a short-lived access token and a rotating refresh token.
 
 ## Generate a resource
 
@@ -76,6 +77,9 @@ Production should run `fastie db check` and `fastie db migrate` as explicit
 deployment steps before the application rollout. The application never runs
 migrations during startup.
 
+For reproducible Fastie development and CI installs, use `uv sync --locked`.
+The committed `uv.lock` keeps the framework dependency graph stable.
+
 ## Authentication configuration
 
 Set these values through the environment or a secret manager in production:
@@ -86,14 +90,22 @@ JWT_ALGORITHM=HS256
 JWT_ISSUER=fastie
 JWT_AUDIENCE=fastie-api
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=30
 CORS_ALLOWED_ORIGINS=https://api.example.com
+ALLOWED_HOSTS=api.example.com
 REDIS_URL=redis://localhost:6379/0
+TRUSTED_PROXY_IPS=10.0.0.0/8
 ```
 
 JWT payloads are signed, not encrypted. Do not put passwords or sensitive
 personal data in them. For a larger deployment, the JWT wrapper can be
 replaced with an external OIDC provider and JWKS validation without changing
 the route dependency shape.
+
+For production, run multiple workers behind a trusted reverse proxy, set
+`--proxy-headers` with an explicit `--forwarded-allow-ips` value, and run
+`fastie db check` before `fastie db migrate`. Do not use SQLite or wildcard
+CORS/host settings in production.
 
 ## License
 

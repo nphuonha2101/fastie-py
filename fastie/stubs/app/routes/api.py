@@ -3,9 +3,12 @@
 This is deliberately ordinary FastAPI code with explicit dependencies.
 """
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,8 +21,10 @@ from fastie.core.securities.password import (
 from fastie.infrastructures.database.dependencies import get_db
 from fastie.middlewares.rate_limit_middleware import RateLimitMiddleware
 from app.models.user import User
+from app.models.refresh_token import RefreshToken
 from app.schemas.models.user.user_create_schema import UserCreateSchema
 from app.schemas.requests.access_token.access_token_request_schema import AccessTokenRequestSchema
+from app.schemas.requests.refresh_token.refresh_token_request_schema import RefreshTokenRequestSchema
 from app.schemas.responses.user.user_response_schema import UserResponseSchema
 
 
@@ -52,9 +57,17 @@ def _get_auth_rate_limiter() -> RateLimitMiddleware:
     return RateLimitMiddleware()
 
 
-async def auth_rate_limit(request: Request):
-    """Protect credential endpoints with the shared rate limiter."""
-    return await _get_auth_rate_limiter().handle(request)
+async def auth_rate_limit_with_headers(request: Request, response: Response):
+    """Apply auth rate limiting and expose standard response headers."""
+    result = await _get_auth_rate_limiter().handle(request)
+    response.headers.update(getattr(request.state, "rate_limit_headers", {}))
+    return result
+
+
+async def close_auth_rate_limiter():
+    """Release the shared Redis client when the app shuts down."""
+    if _get_auth_rate_limiter.cache_info().currsize:
+        await _get_auth_rate_limiter().close()
 
 
 def get_current_user(
@@ -82,7 +95,47 @@ def get_current_user(
     return user
 
 
-def _issue_token(email: str, password: str, db: Session, scopes: list[str] | None = None):
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _refresh_token_expiry() -> datetime:
+    from fastie.core.config.config import get_config
+
+    days = int(get_config().get("REFRESH_TOKEN_EXPIRE_DAYS", 30))
+    return _utc_now() + timedelta(days=days)
+
+
+def _hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _create_refresh_token(user_id: int, db: Session) -> str:
+    raw_token = secrets.token_urlsafe(48)
+    db.add(
+        RefreshToken(
+            user_id=user_id,
+            token_hash=_hash_refresh_token(raw_token),
+            expires_at=_refresh_token_expiry(),
+        )
+    )
+    return raw_token
+
+
+def _access_token(user: User, scopes: list[str] | None = None) -> str:
+    return Jwt.create_token({
+        "sub": str(user.id),
+        "email": user.email,
+        "scope": " ".join(scopes or []),
+    })
+
+
+def _issue_token(
+    email: str,
+    password: str,
+    db: Session,
+    scopes: list[str] | None = None,
+):
     user = (
         db.query(User)
         .filter(
@@ -102,45 +155,112 @@ def _issue_token(email: str, password: str, db: Session, scopes: list[str] | Non
         user.password = upgraded_hash
         db.commit()
 
-    token = Jwt.create_token({
-        "sub": str(user.id),
-        "email": user.email,
-        "scope": " ".join(scopes or []),
-    })
-    return user, token
+    refresh_token = _create_refresh_token(user.id, db)
+    access_token = _access_token(user, scopes)
+    db.commit()
+    return user, access_token, refresh_token
 
 
 @auth_router.post(
     "/token",
     summary="OAuth2 Access Token",
-    dependencies=[Depends(auth_rate_limit)],
 )
-def token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    _, access_token = _issue_token(
+def token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+    _: dict = Depends(auth_rate_limit_with_headers),
+):
+    _, access_token, refresh_token = _issue_token(
         form_data.username,
         form_data.password,
         db,
         form_data.scopes,
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 
 @auth_router.post(
     "/login",
     summary="User Login",
-    dependencies=[Depends(auth_rate_limit)],
 )
-def login(request: AccessTokenRequestSchema, db: Session = Depends(get_db)):
-    user, access_token = _issue_token(request.email, request.password, db)
+def login(
+    request: AccessTokenRequestSchema,
+    db: Session = Depends(get_db),
+    _: dict = Depends(auth_rate_limit_with_headers),
+):
+    user, access_token, refresh_token = _issue_token(request.email, request.password, db)
     return _success(
         data={
             "message": "Login successful",
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": UserResponseSchema.model_validate(user),
         },
         message="Login successful",
     )
+
+
+@auth_router.post("/refresh", summary="Refresh Access Token")
+def refresh(
+    request: RefreshTokenRequestSchema,
+    db: Session = Depends(get_db),
+    _: dict = Depends(auth_rate_limit_with_headers),
+):
+    stored_token = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.token_hash == _hash_refresh_token(request.refresh_token),
+            RefreshToken.revoked_at.is_(None),
+        )
+        .with_for_update()
+        .first()
+    )
+    if stored_token is None or stored_token.expires_at <= _utc_now():
+        raise _unauthorized("Invalid or expired refresh token")
+
+    user = (
+        db.query(User)
+        .filter(
+            User.id == stored_token.user_id,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if user is None:
+        raise _unauthorized("User is no longer active")
+
+    stored_token.revoked_at = _utc_now()
+    new_refresh_token = _create_refresh_token(user.id, db)
+    access_token = _access_token(user)
+    db.commit()
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@auth_router.post("/logout", status_code=204, summary="Revoke Refresh Token")
+def logout(
+    request: RefreshTokenRequestSchema,
+    db: Session = Depends(get_db),
+    _: dict = Depends(auth_rate_limit_with_headers),
+):
+    stored_token = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.token_hash == _hash_refresh_token(request.refresh_token))
+        .first()
+    )
+    if stored_token is not None and stored_token.revoked_at is None:
+        stored_token.revoked_at = _utc_now()
+        db.commit()
+    return None
 
 
 @auth_router.get("/profile", summary="User Profile")
@@ -163,7 +283,7 @@ def greet():
     "/register",
     summary="Register User",
     status_code=201,
-    dependencies=[Depends(auth_rate_limit)],
+    dependencies=[Depends(auth_rate_limit_with_headers)],
 )
 def register_user(request: UserCreateSchema, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == request.email).first() is not None:

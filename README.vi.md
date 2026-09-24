@@ -30,6 +30,7 @@ fastie dev
 API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 `POST /api/v1/auth/token`, nhận form `username` và `password`.
 `/api/v1/auth/login` vẫn có để client JSON dùng tiện hơn.
+Hai endpoint trả về access token ngắn hạn và refresh token có rotation.
 
 ## Tạo resource
 
@@ -62,6 +63,9 @@ trước khi chạy production.
 Production nên chạy `fastie db check` và `fastie db migrate` như các bước riêng
 trong deploy trước khi rollout app. App không tự chạy migration lúc startup.
 
+Để dependency của Fastie ổn định trong development và CI, dùng
+`uv sync --locked`; file `uv.lock` được commit cùng source.
+
 ## Cấu hình auth
 
 ```dotenv
@@ -70,13 +74,20 @@ JWT_ALGORITHM=HS256
 JWT_ISSUER=fastie
 JWT_AUDIENCE=fastie-api
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=30
 CORS_ALLOWED_ORIGINS=https://api.example.com
+ALLOWED_HOSTS=api.example.com
 REDIS_URL=redis://localhost:6379/0
+TRUSTED_PROXY_IPS=10.0.0.0/8
 ```
 
 JWT chỉ được ký, không được mã hóa; không đưa password hoặc dữ liệu nhạy cảm
 vào payload. Khi cần scale lớn hơn, có thể thay wrapper JWT bằng OIDC provider
 và JWKS mà không phải đổi hình dạng dependency của route.
+
+Ở production, chạy nhiều worker phía sau trusted reverse proxy, bật
+`--proxy-headers` cùng `--forwarded-allow-ips` cụ thể, rồi chạy `fastie db check`
+trước `fastie db migrate`. Không dùng SQLite hoặc CORS/host wildcard ở production.
 
 ## License
 
