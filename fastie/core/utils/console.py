@@ -19,6 +19,13 @@ console = Console(theme=fastie_theme)
 
 class FastieConsole:
     """Centralized console utility for Fastie branding (Neo-Brutalism style)"""
+
+    @staticmethod
+    def _message_text(prefix: str, message: str) -> Text:
+        """Render the small amount of Rich markup used by CLI messages."""
+        text = Text.from_markup(f" {prefix} {message}")
+        text.stylize("bold black")
+        return text
     
     @staticmethod
     def print_banner():
@@ -76,19 +83,19 @@ class FastieConsole:
 
     @staticmethod
     def success(message: str):
-        console.print(Panel(Text(f" [ DONE ] {message}", style="bold black"), style="on #ADFF2F", box=box.SQUARE, border_style="black", expand=False))
+        console.print(Panel(FastieConsole._message_text("[ DONE ]", message), style="on #ADFF2F", box=box.SQUARE, border_style="black", expand=False))
 
     @staticmethod
     def info(message: str):
-        console.print(Panel(Text(f" [ INFO ] {message}", style="bold black"), style="on #00E5FF", box=box.SQUARE, border_style="black", expand=False))
+        console.print(Panel(FastieConsole._message_text("[ INFO ]", message), style="on #00E5FF", box=box.SQUARE, border_style="black", expand=False))
 
     @staticmethod
     def warning(message: str):
-        console.print(Panel(Text(f" [ WAIT ] {message}", style="bold black"), style="on #FFA500", box=box.SQUARE, border_style="black", expand=False))
+        console.print(Panel(FastieConsole._message_text("[ WAIT ]", message), style="on #FFA500", box=box.SQUARE, border_style="black", expand=False))
 
     @staticmethod
     def error(message: str):
-        console.print(Panel(Text(f" [ FAIL ] {message}", style="bold black"), style="on #FF3131", box=box.SQUARE, border_style="black", expand=False))
+        console.print(Panel(FastieConsole._message_text("[ FAIL ]", message), style="on #FF3131", box=box.SQUARE, border_style="black", expand=False))
 
     @staticmethod
     def step(message: str):
