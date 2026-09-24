@@ -41,6 +41,8 @@ media/
 # dotenv files
 .env
 .env.*
+!.env.docker.example
+.fastie-local/
 
 # VSCode
 .vscode/

@@ -2,19 +2,16 @@
 Fastie Template Engine - Mako wrapper for code generation
 """
 
-from mako.template import Template
 from mako.lookup import TemplateLookup
 from mako.exceptions import RichTraceback, TemplateLookupException
 from pathlib import Path
-from typing import Dict, Any
-import click
 import tempfile
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-from fastie.core.decorators.di import component
-
-@component(lazy=False)
 class FastieTemplateEngine:
     """Template engine wrapper for Fastie CLI using Mako templates"""
     
@@ -62,11 +59,11 @@ class FastieTemplateEngine:
             return self._clean_output(rendered)
             
         except FileNotFoundError as e:
-            click.echo(f"❌ Template error: {str(e)}")
-            click.echo(f"💡 Available templates in {os.path.dirname(template_name)}:")
+            logger.error("Template error: %s", e)
+            logger.info("Available templates in %s:", os.path.dirname(template_name))
             templates = self.list_templates(os.path.dirname(template_name))
             for t in templates:
-                click.echo(f"   - {t}")
+                logger.info("  - %s", t)
             raise
         except Exception as e:
             self._handle_template_error(template_name, e)
@@ -102,25 +99,25 @@ class FastieTemplateEngine:
     
     def _handle_template_error(self, template_name: str, error: Exception):
         """Handle template rendering errors with helpful debugging info"""
-        click.echo(f"❌ Template error in {template_name}:")
+        logger.error("Template error in %s", template_name)
         
         if isinstance(error, TemplateLookupException):
-            click.echo(f"   Template not found: {template_name}")
-            click.echo(f"   Available templates:")
+            logger.error("  Template not found: %s", template_name)
+            logger.info("  Available templates:")
             for t in self.list_templates(os.path.dirname(template_name)):
-                click.echo(f"   - {t}")
+                logger.info("  - %s", t)
         else:
-            click.echo(f"   {str(error)}")
+            logger.error("  %s", error)
             
             # Show Mako traceback if available
             if hasattr(error, 'source') or 'mako' in str(error).lower():
                 try:
                     traceback = RichTraceback()
                     for (filename, lineno, function, line) in traceback.traceback:
-                        click.echo(f"   File {filename}, line {lineno}, in {function}")
+                        logger.error("  File %s, line %s, in %s", filename, lineno, function)
                         if line:
-                            click.echo(f"     {line}")
-                    click.echo(f"   {traceback.error}")
+                            logger.error("    %s", line)
+                    logger.error("  %s", traceback.error)
                 except:
                     pass  # Fallback to basic error message
     
@@ -152,14 +149,3 @@ template_engine = FastieTemplateEngine()
 def render_template(template_name: str, **context) -> str:
     """Convenience function to render templates"""
     return template_engine.render(template_name, **context)
-
-
-def get_template_helpers():
-    """Common template helper functions"""
-    return {
-        'to_class_name': lambda name: ''.join(word.capitalize() for word in name.lower().replace('-', '_').split('_')),
-        'to_snake_case': lambda name: name.lower().replace('-', '_'),
-        'to_title_case': lambda name: name.replace('_', ' ').replace('-', ' ').title(),
-        'to_plural': lambda name: f"{name}s" if not name.endswith('s') else name,
-        'to_table_name': lambda name: f"{name.lower().replace('-', '_')}s"
-    } 

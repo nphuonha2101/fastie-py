@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  migration-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package and dependencies
+        run: python -m pip install -e .
+
+      - name: Verify dependency lock
+        run: |
+          python -m pip install uv
+          uv lock --check
+
+      - name: Compile Python sources
+        run: python -m compileall -q fastie tests
+
+      - name: Build and import wheel artifact
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir /tmp/fastie-wheel
+          python -m pip install --force-reinstall --no-deps /tmp/fastie-wheel/*.whl
+          cd /tmp
+          python -c "import fastie.core, fastie.infrastructures.database, fastie.cli"
+
+      - name: Run migration workflow tests
+        run: python -m unittest discover -s tests -p 'test_*.py'

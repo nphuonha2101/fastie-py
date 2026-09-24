@@ -1,0 +1,26 @@
+[logging]
+default = "stack"
+
+[logging.channels.stack]
+driver = "stack"
+channels = ["daily"]
+ignore_exceptions = false
+
+[logging.channels.single]
+driver = "single"
+path = "storage/logs/fastie.log"
+level = "debug"
+
+[logging.channels.daily]
+driver = "daily"
+path = "storage/logs/fastie.log"
+level = "debug"
+days = 14
+
+[logging.channels.syslog]
+driver = "syslog"
+level = "debug"
+
+[logging.channels.errorlog]
+driver = "errorlog"
+level = "debug"

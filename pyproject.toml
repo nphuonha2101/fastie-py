@@ -8,9 +8,9 @@ version = "0.0.1a1"
 authors = [
   { name="Phuong Nha Nguyen", email="phuongnhanguyen.dev@gmail.com" },
 ]
-description = "Fastie Framework - A Laravel Artisan-like CLI and DI-based framework for FastAPI"
+description = "Fastie Framework - A convention-driven FastAPI CLI and backend foundation"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -21,16 +21,19 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
+    "python-multipart",
     "python-dotenv",
     "sqlalchemy",
     "pymysql",
     "alembic",
     "pyjwt",
-    "passlib[bcrypt]",
+    "redis>=5,<6",
+    "pwdlib[argon2]",
     "email-validator",
     "mako",
     "click",
     "rich",
+    "dynaconf",
 ]
 
 [project.urls]
@@ -41,7 +44,13 @@ dependencies = [
 fastie = "fastie.cli:cli"
 
 [tool.setuptools]
-packages = ["fastie"]
+
+[tool.setuptools.packages.find]
+include = ["fastie*"]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 fastie = ["templates/**/*.mako", "stubs/**/*"]
+
+[tool.setuptools.exclude-package-data]
+fastie = ["**/__pycache__/*", "**/*.py[cod]"]

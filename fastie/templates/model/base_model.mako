@@ -61,8 +61,6 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Date, F
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.types import DECIMAL as Decimal
 from fastie.models.abstract_model import AbstractModel
-from typing import Optional
-from pydantic import BaseModel
 from datetime import datetime, date
 
 class ${to_class_name(name)}(AbstractModel):
@@ -74,11 +72,6 @@ class ${to_class_name(name)}(AbstractModel):
     """
     __tablename__ = '${get_table_name(name)}'
     
-    def get_response_model(self) -> Optional[BaseModel]:
-        """Get the Pydantic model for API responses"""
-        # TODO: Update with actual response schema when available
-        return None
-
 % if fields:
     # Model fields
 % for field in fields.split(','):
@@ -105,4 +98,4 @@ ${generate_field_definition(field)}
             fields.append(f"sku='{self.sku}'")
         if hasattr(self, 'is_active'):
             fields.append(f"active={self.is_active}")
-        return f"<{to_class_name(name)}({', '.join(fields)})>" 
+        return f"<{to_class_name(name)}({', '.join(fields)})>"
