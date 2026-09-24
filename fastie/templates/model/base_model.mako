@@ -1,12 +1,17 @@
 <%!
+import re
+
 def to_class_name(name):
     """Convert name to proper PascalCase class name"""
-    parts = name.lower().replace('-', '_').split('_')
+    parts = to_snake_case(name).split('_')
     return ''.join(word.capitalize() for word in parts)
 
 def to_snake_case(name):
     """Convert name to snake_case"""
-    return name.lower().replace('-', '_')
+    value = str(name).replace('-', '_').replace(' ', '_')
+    value = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', value)
+    value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', value)
+    return re.sub(r'_+', '_', value).strip('_').lower()
 
 def get_table_name(name):
     """Generate table name from model name"""

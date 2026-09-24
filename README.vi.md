@@ -39,9 +39,14 @@ API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 Endpoint trả về access token ngắn hạn và refresh token có rotation. Nếu phát
 hiện refresh token bị reuse, toàn bộ token family sẽ bị revoke.
 
+FastAPI tự sinh tài liệu tại `/docs`, `/redoc` và `/openapi.json`. Router v1
+được mount dưới `/api/v1`; các router tiếp theo như v2 hoặc v3 sẽ được tạo và
+mount khi cần, nên có thể migrate từng feature; resource tạo bằng
+`fastie make resource` mặc định vào v1.
+
 Để tạo nhanh stack Docker gồm PostgreSQL, Redis, application container chạy
-non-root và một service migration chạy trước API, hãy trỏ Docker setup vào
-source Fastie local vì package chưa được publish:
+non-root và một service migration chạy trước API, chạy Docker setup từ source
+Fastie local. Command sẽ tự nhận source vì package chưa được publish:
 
 ```bash
 fastie setup docker --database postgres --local-source ..
@@ -53,29 +58,38 @@ docker compose --env-file .env.docker up --build
 Dùng `--database mysql` nếu chọn MySQL. Hãy review các giá trị được sinh ra và
 dùng secret manager cho credential production thật.
 Tuỳ chọn `--local-source` sẽ build wheel local trong `.fastie-local/`.
+Nếu dùng private package registry, truyền `--fastie-package your-package==version`.
 
 ## Tạo resource
 
 ```bash
 fastie make resource Product --fields "name:str,price:decimal,is_active:bool"
+# Thêm contract API khác version nhưng dùng lại model và migration hiện tại.
+fastie make resource Product --version v3 --reuse-model --fields "name:str,price:decimal,is_active:bool"
+# Dùng model/table riêng khi persistence contract khác hẳn.
+fastie make resource Product --version v2 --model ProductV2 --fields "name:str,price:decimal,is_active:bool"
 fastie make migration add_products_table --auto
 fastie db check
 fastie db migrate
 ```
 
 Lệnh này tạo model SQLAlchemy, schema create/update/response, CRUD router
-FastAPI và tự đăng ký router vào project mới. Vẫn nên review code và migration
-trước khi chạy production.
+FastAPI và tự đăng ký router vào project mới. `--version vN` nhận mọi version
+số dương, tự tạo router version nếu chưa có và tách riêng schema/route theo
+version. Dùng `--reuse-model` khi thêm version cho resource đã tồn tại. Vẫn nên
+review code và migration trước khi chạy production. Dùng `--model ProductV2` để
+tạo ORM model và table riêng; migration của model này cần được review và apply
+riêng.
 
 ## CLI chính
 
 - `fastie new <name>`: Tạo project.
-- `fastie setup docker`: Tạo Dockerfile, Compose stack và template biến môi trường Docker; dùng `--local-source <path>` để test source chưa publish.
+- `fastie setup docker`: Tạo Dockerfile, Compose stack và template biến môi trường Docker; tự nhận source local, hoặc dùng `--local-source <path>`/`--fastie-package <requirement>`.
 - `fastie dev`: Chạy Uvicorn có auto-reload trên localhost.
 - `fastie serve`: Chạy Uvicorn không auto-reload mặc định.
 - `fastie routes`: Liệt kê route.
 - `fastie test`: Chạy test suite. Cài `requirements-test.txt` trước.
-- `fastie make resource <Name>`: Tạo luồng CRUD mặc định.
+- `fastie make resource <Name> [--version vN] [--reuse-model] [--model ModelName]`: Tạo CRUD cho version chỉ định; mặc định là v1.
 - `fastie make model <Name>`: Chỉ tạo model.
 - `fastie make migration <Name>`: Tạo migration để review.
 - `fastie db migrate`: Apply migration.
