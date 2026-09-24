@@ -36,7 +36,8 @@ fastie dev
 
 API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 `POST /api/v1/auth/token`, nhận form `username` và `password`.
-Endpoint trả về access token ngắn hạn và refresh token có rotation.
+Endpoint trả về access token ngắn hạn và refresh token có rotation. Nếu phát
+hiện refresh token bị reuse, toàn bộ token family sẽ bị revoke.
 
 Để tạo nhanh stack Docker gồm PostgreSQL, Redis, application container chạy
 non-root và một service migration chạy trước API, hãy trỏ Docker setup vào
