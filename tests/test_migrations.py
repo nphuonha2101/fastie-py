@@ -289,6 +289,40 @@ assert any(route.path == '/api/v1/products/' for route in app.routes)
         )
         self.assertEqual(import_result.returncode, 0, import_result.stdout + import_result.stderr)
 
+        v2_result = self.run_fastie(
+            "make",
+            "resource",
+            "Product",
+            "--fields",
+            "name:str,price:decimal,is_active:bool",
+            "--version",
+            "v2",
+            "--model",
+            "ProductV2",
+        )
+        self.assertEqual(v2_result.returncode, 0, v2_result.stdout + v2_result.stderr)
+        self.assertTrue((self.project_dir / "app/models/product_v2.py").is_file())
+        self.assertTrue((self.project_dir / "app/routes/v2.py").is_file())
+        self.assertTrue((self.project_dir / "app/routes/resources/v2/product.py").is_file())
+        self.assertIn(
+            "from .product_v2 import ProductV2",
+            (self.project_dir / "app/models/__init__.py").read_text(),
+        )
+        v2_router = (self.project_dir / "app/routes/resources/v2/product.py").read_text()
+        self.assertIn("from app.models.product_v2 import ProductV2", v2_router)
+        self.assertIn("db.query(ProductV2)", v2_router)
+
+        v2_import = self.run_python(
+            """
+from app.main import app
+from app.models.product_v2 import ProductV2
+paths = app.openapi()['paths']
+assert '/api/v2/products/' in paths
+assert ProductV2.__tablename__ == 'product_v2s'
+            """
+        )
+        self.assertEqual(v2_import.returncode, 0, v2_import.stdout + v2_import.stderr)
+
         v3_result = self.run_fastie(
             "make",
             "resource",
@@ -334,7 +368,7 @@ assert '/api/v3/products/' in paths
         result = self.run_python(
             """
 from app.main import app
-from app.routes.api import v1_router, v2_router
+from app.routes.api import v1_router
 
 paths = app.openapi()['paths']
 assert '/api/v1/auth/token' in paths
@@ -346,7 +380,7 @@ assert app.docs_url == '/docs'
 assert app.redoc_url == '/redoc'
 assert app.openapi_url == '/openapi.json'
 assert v1_router.prefix == '/v1'
-assert v2_router.prefix == '/v2'
+assert not any(path.startswith('/api/v2/') for path in paths)
 security = paths['/api/v1/user/']['get']['security']
 assert security and security[0].get('OAuth2PasswordBearer') == []
             """

@@ -14,13 +14,11 @@ from app.routes.auth import (
 )
 from app.routes.users import list_users, register_user, user_router
 from app.routes.v1 import v1_router
-from app.routes.v2 import v2_router
 
 # Fastie version routes - generated imports
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(v1_router)
-api_router.include_router(v2_router)
 # Fastie version routes - generated includes
 
 
@@ -44,5 +42,4 @@ __all__ = [
     "token",
     "user_router",
     "v1_router",
-    "v2_router",
 ]

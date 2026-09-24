@@ -456,15 +456,23 @@ def make_model(name, fields, no_import):
 @click.option(
     '--reuse-model',
     is_flag=True,
-    help='Reuse an existing model when adding another API version for a resource.',
+    help='Reuse an existing model instead of generating one.',
+)
+@click.option(
+    '--model',
+    'model_name',
+    help='ORM model name. Defaults to the resource name; use this for a separate model.',
 )
 @click.option('--force', is_flag=True, help='Overwrite generated files if they already exist')
-def make_resource(name, fields, migrate, api_version, reuse_model, force):
+def make_resource(name, fields, migrate, api_version, reuse_model, model_name, force):
     """Create a model, schemas, and a plain FastAPI CRUD router."""
     try:
         api_version = api_version.lower()
         snake_name = _to_snake_case(name)
         class_name = _to_class_name(name)
+        model_name = model_name or name
+        model_snake_name = _to_snake_case(model_name)
+        model_class_name = _to_class_name(model_name)
         field_specs = _parse_resource_fields(fields)
         schema_root = Path('app/schemas/requests')
         response_root = Path('app/schemas/responses')
@@ -472,9 +480,10 @@ def make_resource(name, fields, migrate, api_version, reuse_model, force):
             schema_root /= api_version
             response_root /= api_version
         route_path = Path(f'app/routes/resources/{api_version}/{snake_name}.py')
+        model_path = Path(f'app/models/{model_snake_name}.py')
 
         files = {
-            Path(f"app/models/{snake_name}.py"): _generate_model_template(name, fields),
+            model_path: _generate_model_template(model_name, fields),
             schema_root / snake_name / f"{snake_name}_create_schema.py":
                 _generate_resource_create_schema(name, field_specs),
             schema_root / snake_name / f"{snake_name}_update_schema.py":
@@ -485,11 +494,15 @@ def make_resource(name, fields, migrate, api_version, reuse_model, force):
                 name,
                 field_specs,
                 schema_version=None if api_version == 'v1' else api_version,
+                model_name=model_name,
             ),
         }
-        model_path = Path(f"app/models/{snake_name}.py")
         if reuse_model and model_path.exists():
             files.pop(model_path)
+        elif reuse_model:
+            raise click.ClickException(
+                f"Cannot reuse model '{model_class_name}': {model_path} does not exist."
+            )
         init_files = set()
         for file_path in files:
             init_files.add(file_path.parent / '__init__.py')
@@ -509,7 +522,7 @@ def make_resource(name, fields, migrate, api_version, reuse_model, force):
             init_file.parent.mkdir(parents=True, exist_ok=True)
             init_file.touch(exist_ok=True)
 
-        _add_model_to_init(name)
+        _add_model_to_init(model_name)
         version_router_ready = _ensure_api_version_router(api_version)
         if version_router_ready and _register_resource_route(name, api_version):
             fastie_console.success(f"Resource route registered: /api/{api_version}/{snake_name}s")
@@ -520,7 +533,7 @@ def make_resource(name, fields, migrate, api_version, reuse_model, force):
 
         fastie_console.success(f"Resource created: [bold]{class_name}[/bold]")
         if migrate:
-            table_name = snake_name if snake_name.endswith('s') else f"{snake_name}s"
+            table_name = model_snake_name if model_snake_name.endswith('s') else f"{model_snake_name}s"
             head = _ensure_single_migration_head()
             migration_command = ['revision', '--autogenerate', '-m', f"create_{table_name}_table"]
             if head:
@@ -529,7 +542,7 @@ def make_resource(name, fields, migrate, api_version, reuse_model, force):
             fastie_console.success(f"Migration created: create_{table_name}_table")
             fastie_console.step("Review it, then run: fastie db migrate")
         else:
-            fastie_console.step(f"Next step: fastie make migration add_{snake_name}_table --auto")
+            fastie_console.step(f"Next step: fastie make migration add_{model_snake_name}_table --auto")
     except click.ClickException:
         raise
     except Exception as e:
@@ -1264,7 +1277,7 @@ class {class_name}ResponseSchema(BaseModel):
 '''
 
 
-def _generate_resource_router(name, fields, schema_version=None):
+def _generate_resource_router(name, fields, schema_version=None, model_name=None):
     if TEMPLATES_AVAILABLE:
         try:
             return render_template(
@@ -1272,6 +1285,7 @@ def _generate_resource_router(name, fields, schema_version=None):
                 name=name,
                 fields=fields,
                 schema_version=schema_version,
+                model_name=model_name or name,
             )
         except Exception as e:
             logger.warning("Template rendering failed: %s", e)
@@ -1306,13 +1320,16 @@ def _show_fallback_routes():
 
 def _to_class_name(name):
     """Convert name to proper PascalCase class name"""
-    parts = name.lower().replace('-', '_').split('_')
+    parts = _to_snake_case(name).split('_')
     return ''.join(word.capitalize() for word in parts)
 
 
 def _to_snake_case(name):
     """Convert a CLI name to the convention used by generated modules."""
-    return name.lower().replace('-', '_')
+    value = str(name).replace('-', '_').replace(' ', '_')
+    value = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', value)
+    value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', value)
+    return re.sub(r'_+', '_', value).strip('_').lower()
 
 
 def _add_model_to_init(name):

@@ -1,9 +1,14 @@
 <%!
+import re
+
 def to_class_name(name):
-    return ''.join(word.capitalize() for word in name.lower().replace('-', '_').split('_'))
+    return ''.join(word.capitalize() for word in to_snake_case(name).split('_'))
 
 def to_snake_case(name):
-    return name.lower().replace('-', '_')
+    value = str(name).replace('-', '_').replace(' ', '_')
+    value = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', value)
+    value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', value)
+    return re.sub(r'_+', '_', value).strip('_').lower()
 
 def unique_imports(fields):
     imports = {
@@ -18,9 +23,11 @@ def unique_imports(fields):
 <%
 request_schema_root = "app.schemas.requests" if not schema_version else f"app.schemas.requests.{schema_version}"
 response_schema_root = "app.schemas.responses" if not schema_version else f"app.schemas.responses.{schema_version}"
+model_module = to_snake_case(model_name or name)
+model_class_name = to_class_name(model_name or name)
 %>
 ${unique_imports(fields)}
-from app.models.${to_snake_case(name)} import ${to_class_name(name)}
+from app.models.${model_module} import ${model_class_name}
 from ${request_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_create_schema import ${to_class_name(name)}CreateSchema
 from ${request_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_update_schema import ${to_class_name(name)}UpdateSchema
 from ${response_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_response_schema import ${to_class_name(name)}ResponseSchema
@@ -29,12 +36,12 @@ from ${response_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_respo
 router = APIRouter()
 
 
-def _get_or_404(item_id: int, db: Session) -> ${to_class_name(name)}:
+def _get_or_404(item_id: int, db: Session) -> ${model_class_name}:
     item = (
-        db.query(${to_class_name(name)})
+        db.query(${model_class_name})
         .filter(
-            ${to_class_name(name)}.id == item_id,
-            ${to_class_name(name)}.deleted_at.is_(None),
+            ${model_class_name}.id == item_id,
+            ${model_class_name}.deleted_at.is_(None),
         )
         .first()
     )
@@ -46,16 +53,16 @@ def _get_or_404(item_id: int, db: Session) -> ${to_class_name(name)}:
 @router.get("/", response_model=list[${to_class_name(name)}ResponseSchema])
 def index(db: Session = Depends(get_db)):
     return (
-        db.query(${to_class_name(name)})
-        .filter(${to_class_name(name)}.deleted_at.is_(None))
-        .order_by(${to_class_name(name)}.id)
+        db.query(${model_class_name})
+        .filter(${model_class_name}.deleted_at.is_(None))
+        .order_by(${model_class_name}.id)
         .all()
     )
 
 
 @router.post("/", response_model=${to_class_name(name)}ResponseSchema, status_code=status.HTTP_201_CREATED)
 def create(payload: ${to_class_name(name)}CreateSchema, db: Session = Depends(get_db)):
-    item = ${to_class_name(name)}(**payload.model_dump(exclude_unset=True))
+    item = ${model_class_name}(**payload.model_dump(exclude_unset=True))
     db.add(item)
     try:
         db.commit()

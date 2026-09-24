@@ -27,8 +27,7 @@ app/
   routes/
     api.py             # /api namespace composition
     v1.py              # Stable /api/v1 router
-    v2.py              # Incremental /api/v2 router
-    v3.py              # Created automatically when a v3 resource is generated
+    vN.py              # Created automatically for additional API versions
     auth.py            # Authentication and refresh-token routes
     users.py           # User routes
     resources/         # Versioned resource routers (v1/, v2/, v3/, ...)
@@ -45,7 +44,10 @@ resources/             # Static resources
 fastie db check
 fastie db migrate
 fastie make resource Product --fields "name:str,price:decimal"
+# Reuse the existing Product model for another contract.
 fastie make resource Product --version v3 --reuse-model --fields "name:str,price:decimal"
+# Or generate a separate persistence model/table explicitly.
+fastie make resource Product --version v2 --model ProductV2 --fields "name:str,price:decimal"
 fastie make migration add_products_table --auto
 fastie db check
 fastie db migrate
@@ -54,4 +56,5 @@ fastie db migrate
 Review generated code and migrations before applying them in production.
 Resource versions accept any positive numeric form (`v1`, `v2`, `v3`, ...).
 Each version gets its own route/schema contract while the SQLAlchemy model and
-migration history remain shared.
+migration history remain shared by default. Pass `--model ModelName` to opt into
+a separate ORM model/table and manage its migration independently.
