@@ -15,6 +15,7 @@ class RefreshToken(Base):
         nullable=False,
         index=True,
     )
+    family_id = Column(String(36), nullable=False, index=True)
     token_hash = Column(String(64), unique=True, nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False)
     revoked_at = Column(DateTime, nullable=True)

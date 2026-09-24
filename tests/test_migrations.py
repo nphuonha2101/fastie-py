@@ -75,7 +75,7 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertEqual(repeat.returncode, 0, repeat.stdout + repeat.stderr)
 
     def test_multiple_heads_are_rejected_before_migration(self):
-        initial_revision = "7d2f8a1c4e90"
+        initial_revision = "c4f1d6a8e9b0"
         first = self.run_alembic("revision", "-m", "branch_a", "--head", initial_revision)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
 
@@ -98,7 +98,7 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         revisions = sorted((self.project_dir / "alembic" / "versions").glob("*.py"))
-        self.assertEqual(len(revisions), 3)
+        self.assertEqual(len(revisions), 4)
         self.assertTrue(any("empty_migration_" in revision.name for revision in revisions))
 
     def test_production_rollback_is_blocked_without_force(self):
@@ -167,6 +167,7 @@ class MigrationWorkflowTests(unittest.TestCase):
         auth_flow = self.run_python(
             """
 from app.main import app
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.routes.api import get_current_user, logout, refresh, register_user, token as issue_token
 from app.schemas.models.user.user_create_schema import UserCreateSchema
@@ -202,12 +203,24 @@ assert payload['sub'] == str(created_id)
 rotated = refresh(RefreshTokenRequestSchema(refresh_token=refresh_token), login_db)
 assert rotated['access_token']
 assert rotated['refresh_token'] != refresh_token
+refresh_rows = login_db.query(RefreshToken).order_by(RefreshToken.id).all()
+assert len(refresh_rows) == 2
+assert refresh_rows[0].family_id == refresh_rows[1].family_id
 try:
     refresh(RefreshTokenRequestSchema(refresh_token=refresh_token), login_db)
 except Exception as exc:
     assert getattr(exc, 'status_code', None) == 401
+    assert getattr(exc, 'detail', None) == 'Refresh token reuse detected'
 else:
     raise AssertionError('Refresh token rotation did not revoke the old token')
+assert login_db.query(RefreshToken).filter(RefreshToken.revoked_at.is_(None)).count() == 0
+try:
+    refresh(RefreshTokenRequestSchema(refresh_token=rotated['refresh_token']), login_db)
+except Exception as exc:
+    assert getattr(exc, 'status_code', None) == 401
+    assert getattr(exc, 'detail', None) == 'Refresh token reuse detected'
+else:
+    raise AssertionError('Refresh token family was not revoked after reuse')
 logout(RefreshTokenRequestSchema(refresh_token=rotated['refresh_token']), login_db)
 
 login_db.close()
@@ -232,7 +245,7 @@ login_db.close()
         self.assertTrue((self.project_dir / "app/api/v1/routes/product.py").is_file())
         self.assertEqual(
             len(list((self.project_dir / "alembic/versions").glob("*.py"))),
-            3,
+            4,
         )
 
         migrate = self.run_fastie("db", "migrate")

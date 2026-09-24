@@ -31,4 +31,19 @@ def test_register_login_profile_and_refresh(client):
         json={"refresh_token": tokens["refresh_token"]},
     )
     assert refreshed.status_code == 200
-    assert refreshed.json()["refresh_token"] != tokens["refresh_token"]
+    rotated_tokens = refreshed.json()
+    assert rotated_tokens["refresh_token"] != tokens["refresh_token"]
+
+    reused = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": tokens["refresh_token"]},
+    )
+    assert reused.status_code == 401
+    assert reused.json()["detail"] == "Refresh token reuse detected"
+
+    family_token_reuse = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": rotated_tokens["refresh_token"]},
+    )
+    assert family_token_reuse.status_code == 401
+    assert family_token_reuse.json()["detail"] == "Refresh token reuse detected"

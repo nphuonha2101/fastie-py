@@ -4,9 +4,11 @@ This is deliberately ordinary FastAPI code with explicit dependencies.
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -27,6 +29,7 @@ from app.schemas.requests.refresh_token.refresh_token_request_schema import Refr
 from app.schemas.responses.user.user_response_schema import UserResponseSchema
 
 
+logger = logging.getLogger(__name__)
 api_router = APIRouter(prefix="/api/v1")
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 user_router = APIRouter(prefix="/user", tags=["User"])
@@ -109,16 +112,31 @@ def _hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _create_refresh_token(user_id: int, db: Session) -> str:
+def _create_refresh_token(
+    user_id: int,
+    db: Session,
+    family_id: str | None = None,
+) -> str:
     raw_token = secrets.token_urlsafe(48)
     db.add(
         RefreshToken(
             user_id=user_id,
+            family_id=family_id or str(uuid4()),
             token_hash=_hash_refresh_token(raw_token),
             expires_at=_refresh_token_expiry(),
         )
     )
     return raw_token
+
+
+def _revoke_refresh_token_family(family_id: str, db: Session) -> None:
+    active_tokens = db.query(RefreshToken).filter(
+        RefreshToken.family_id == family_id,
+        RefreshToken.revoked_at.is_(None),
+    ).with_for_update().all()
+    revoked_at = _utc_now()
+    for token in active_tokens:
+        token.revoked_at = revoked_at
 
 
 def _access_token(user: User, scopes: list[str] | None = None) -> str:
@@ -192,12 +210,22 @@ def refresh(
         db.query(RefreshToken)
         .filter(
             RefreshToken.token_hash == _hash_refresh_token(request.refresh_token),
-            RefreshToken.revoked_at.is_(None),
         )
         .with_for_update()
         .first()
     )
-    if stored_token is None or stored_token.expires_at <= _utc_now():
+    if stored_token is None:
+        raise _unauthorized("Invalid or expired refresh token")
+    if stored_token.revoked_at is not None:
+        logger.warning(
+            "Refresh token reuse detected user_id=%s family_id=%s",
+            stored_token.user_id,
+            stored_token.family_id,
+        )
+        _revoke_refresh_token_family(stored_token.family_id, db)
+        db.commit()
+        raise _unauthorized("Refresh token reuse detected")
+    if stored_token.expires_at <= _utc_now():
         raise _unauthorized("Invalid or expired refresh token")
 
     user = (
@@ -213,7 +241,11 @@ def refresh(
         raise _unauthorized("User is no longer active")
 
     stored_token.revoked_at = _utc_now()
-    new_refresh_token = _create_refresh_token(user.id, db)
+    new_refresh_token = _create_refresh_token(
+        user.id,
+        db,
+        family_id=stored_token.family_id,
+    )
     access_token = _access_token(user)
     db.commit()
     return {

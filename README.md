@@ -40,7 +40,8 @@ fastie dev
 
 The generated API is available under `/api/v1`. The OAuth2 token endpoint is
 `POST /api/v1/auth/token` with form fields `username` and `password`. It
-returns a short-lived access token and a rotating refresh token.
+returns a short-lived access token and a rotating refresh token. Refresh token
+reuse invalidates the whole token family.
 
 For a ready-to-run local container stack with PostgreSQL, Redis, a non-root
 application container, and a one-shot migration service, point Docker setup at
