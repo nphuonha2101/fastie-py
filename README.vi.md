@@ -4,6 +4,9 @@ Fastie là nền tảng backend dựa trên **FastAPI**, ưu tiên convention v�
 dev. Project mới sinh ra dùng FastAPI thuần: `APIRouter`, `Depends(get_db)`,
 SQLAlchemy, Pydantic và migration tường minh.
 
+> Fastie hiện chưa được publish lên PyPI. Các lệnh dưới đây giả định bạn đang
+> dùng source checkout và cài package ở chế độ editable.
+
 Tiếng Anh: [English](README.md)
 
 ## Có sẵn
@@ -19,7 +22,11 @@ Tiếng Anh: [English](README.md)
 ## Bắt đầu nhanh
 
 ```bash
-pip install fastie-py
+git clone https://github.com/nphuonha2101/fastie-py.git
+cd fastie-py
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 fastie new my_project --database sqlite
 cd my_project
 pip install -r requirements.txt
@@ -32,10 +39,11 @@ API mặc định nằm dưới `/api/v1`. Endpoint OAuth2 chuẩn là
 Endpoint trả về access token ngắn hạn và refresh token có rotation.
 
 Để tạo nhanh stack Docker gồm PostgreSQL, Redis, application container chạy
-non-root và một service migration chạy trước API:
+non-root và một service migration chạy trước API, hãy trỏ Docker setup vào
+source Fastie local vì package chưa được publish:
 
 ```bash
-fastie setup docker --database postgres
+fastie setup docker --database postgres --local-source ..
 cp .env.docker.example .env.docker
 # Sửa secret, domain và CORS trong .env.docker.
 docker compose --env-file .env.docker up --build
@@ -43,13 +51,7 @@ docker compose --env-file .env.docker up --build
 
 Dùng `--database mysql` nếu chọn MySQL. Hãy review các giá trị được sinh ra và
 dùng secret manager cho credential production thật.
-
-Nếu đang test source Fastie local chưa publish lên PyPI, truyền đường dẫn source
-vào command. Lệnh sẽ build wheel local trong `.fastie-local/`:
-
-```bash
-fastie setup docker --local-source ../fastie
-```
+Tuỳ chọn `--local-source` sẽ build wheel local trong `.fastie-local/`.
 
 ## Tạo resource
 
@@ -71,6 +73,7 @@ trước khi chạy production.
 - `fastie dev`: Chạy Uvicorn có auto-reload trên localhost.
 - `fastie serve`: Chạy Uvicorn không auto-reload mặc định.
 - `fastie routes`: Liệt kê route.
+- `fastie test`: Chạy test suite. Cài `requirements-test.txt` trước.
 - `fastie make resource <Name>`: Tạo luồng CRUD mặc định.
 - `fastie make model <Name>`: Chỉ tạo model.
 - `fastie make migration <Name>`: Tạo migration để review.
@@ -82,6 +85,19 @@ trước khi chạy production.
 
 Production nên chạy `fastie db check` và `fastie db migrate` như các bước riêng
 trong deploy trước khi rollout app. App không tự chạy migration lúc startup.
+
+## Testing
+
+Project generate sẵn SQLite test fixture, FastAPI `TestClient` và dependency
+overrides. Cài dependency test rồi chạy từ root project:
+
+```bash
+pip install -r requirements-test.txt
+fastie test
+```
+
+Dùng `fastie test --coverage` để xem coverage. Có thể truyền thêm argument của
+pytest, ví dụ `fastie test tests/api/test_auth.py`.
 
 Để dependency của Fastie ổn định trong development và CI, dùng
 `uv sync --locked`; file `uv.lock` được commit cùng source.

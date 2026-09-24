@@ -101,6 +101,31 @@ def cli():
         fastie_console.print_banner()
 
 
+@cli.command(name='test')
+@click.option('--coverage', is_flag=True, help='Show a coverage report for the app package.')
+@click.argument('pytest_args', nargs=-1, type=click.UNPROCESSED)
+def run_tests(coverage, pytest_args):
+    """Run the generated project tests with pytest."""
+    if not Path('tests').is_dir():
+        raise click.ClickException(
+            "tests/ was not found. Run this command from a generated project root."
+        )
+
+    try:
+        import pytest  # noqa: F401
+    except ImportError as exc:
+        raise click.ClickException(
+            "pytest is not installed. Run `pip install -r requirements-test.txt`."
+        ) from exc
+
+    command = [sys.executable, '-m', 'pytest']
+    if coverage:
+        command.extend(['--cov=app', '--cov-report=term-missing'])
+    command.extend(pytest_args)
+    result = subprocess.run(command)
+    raise click.exceptions.Exit(result.returncode)
+
+
 @cli.group(name='setup')
 def setup():
     """Generate deployment and development setup files."""
@@ -125,7 +150,7 @@ def setup():
 @click.option(
     '--local-source',
     type=click.Path(exists=True, file_okay=False, dir_okay=True, resolve_path=True, path_type=Path),
-    help='Build Fastie from a local source directory instead of installing it from PyPI.',
+    help='Build Fastie from a local source directory for the generated Docker image.',
 )
 @click.option('--force', is_flag=True, help='Overwrite existing Docker setup files.')
 def setup_docker(database, workers, local_source, force):

@@ -4,6 +4,9 @@ Fastie is a convention-driven backend starter built on **FastAPI**. Generated
 projects use ordinary FastAPI code: `APIRouter`, `Depends(get_db)`, SQLAlchemy,
 Pydantic, and explicit migrations.
 
+> Fastie is not published to PyPI yet. The commands below assume a local source
+> checkout and an editable install.
+
 Vietnamese: [Tiếng Việt](README.vi.md)
 
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -23,7 +26,11 @@ Vietnamese: [Tiếng Việt](README.vi.md)
 ## Quick start
 
 ```bash
-pip install fastie-py
+git clone https://github.com/nphuonha2101/fastie-py.git
+cd fastie-py
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 fastie new my_project --database sqlite
 cd my_project
 pip install -r requirements.txt
@@ -36,10 +43,11 @@ The generated API is available under `/api/v1`. The OAuth2 token endpoint is
 returns a short-lived access token and a rotating refresh token.
 
 For a ready-to-run local container stack with PostgreSQL, Redis, a non-root
-application container, and a one-shot migration service:
+application container, and a one-shot migration service, point Docker setup at
+the local Fastie checkout while the package is unpublished:
 
 ```bash
-fastie setup docker --database postgres
+fastie setup docker --database postgres --local-source ..
 cp .env.docker.example .env.docker
 # Edit .env.docker before starting the stack.
 docker compose --env-file .env.docker up --build
@@ -48,13 +56,7 @@ docker compose --env-file .env.docker up --build
 Use `--database mysql` for MySQL. The generated Compose stack runs migrations
 in a separate service before the API container starts; review the generated
 environment values and use a secret manager for real production credentials.
-When testing an unpublished local Fastie checkout, point the command to its
-source directory; it builds a local wheel into `.fastie-local/` and does not
-download Fastie from PyPI:
-
-```bash
-fastie setup docker --local-source ../fastie
-```
+The `--local-source` option builds a local wheel into `.fastie-local/`.
 
 ## Generate a resource
 
@@ -78,6 +80,7 @@ project. Review generated code before applying the migration.
 - `fastie dev`: Run Uvicorn with auto-reload on localhost.
 - `fastie serve`: Run Uvicorn without auto-reload by default.
 - `fastie routes`: List application routes.
+- `fastie test`: Run the generated test suite. Install `requirements-test.txt` first.
 
 ### Code generation
 
@@ -96,6 +99,20 @@ project. Review generated code before applying the migration.
 Production should run `fastie db check` and `fastie db migrate` as explicit
 deployment steps before the application rollout. The application never runs
 migrations during startup.
+
+## Testing
+
+Generated projects include a SQLite test fixture, FastAPI `TestClient`, and
+dependency overrides. Install the test dependencies and run the suite from the
+project root:
+
+```bash
+pip install -r requirements-test.txt
+fastie test
+```
+
+Use `fastie test --coverage` for a coverage report. Pass additional pytest
+arguments after the command, for example `fastie test tests/api/test_auth.py`.
 
 For reproducible Fastie development and CI installs, use `uv sync --locked`.
 The committed `uv.lock` keeps the framework dependency graph stable.
