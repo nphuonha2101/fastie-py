@@ -101,6 +101,21 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertEqual(len(revisions), 4)
         self.assertTrue(any("empty_migration_" in revision.name for revision in revisions))
 
+    def test_auto_migration_accepts_an_explicit_name(self):
+        base_migrate = self.run_fastie("db", "migrate")
+        self.assertEqual(base_migrate.returncode, 0, base_migrate.stdout + base_migrate.stderr)
+
+        result = self.run_fastie(
+            "make",
+            "migration",
+            "add_products_table",
+            "--auto",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(
+            any("add_products_table" in revision.name for revision in (self.project_dir / "alembic/versions").glob("*.py"))
+        )
+
     def test_production_rollback_is_blocked_without_force(self):
         self.env["ENVIRONMENT"] = "production"
         rollback = self.run_fastie("db", "rollback")
@@ -242,7 +257,10 @@ login_db.close()
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((self.project_dir / "app/models/product.py").is_file())
-        self.assertTrue((self.project_dir / "app/api/v1/routes/product.py").is_file())
+        self.assertTrue((self.project_dir / "app/routes/resources/v1/product.py").is_file())
+        self.assertFalse((self.project_dir / "app/api").exists())
+        self.assertFalse((self.project_dir / "app/repositories").exists())
+        self.assertFalse((self.project_dir / "app/services").exists())
         self.assertEqual(
             len(list((self.project_dir / "alembic/versions").glob("*.py"))),
             4,
@@ -251,7 +269,7 @@ login_db.close()
         migrate = self.run_fastie("db", "migrate")
         self.assertEqual(migrate.returncode, 0, migrate.stdout + migrate.stderr)
 
-        routes = (self.project_dir / "app/routes/api.py").read_text()
+        routes = (self.project_dir / "app/routes/v1.py").read_text()
         self.assertIn("product_router", routes)
 
         compile_result = subprocess.run(
@@ -271,10 +289,52 @@ assert any(route.path == '/api/v1/products/' for route in app.routes)
         )
         self.assertEqual(import_result.returncode, 0, import_result.stdout + import_result.stderr)
 
+        v3_result = self.run_fastie(
+            "make",
+            "resource",
+            "Product",
+            "--fields",
+            "name:str,price:decimal,is_active:bool",
+            "--version",
+            "v3",
+            "--reuse-model",
+        )
+        self.assertEqual(v3_result.returncode, 0, v3_result.stdout + v3_result.stderr)
+        self.assertTrue((self.project_dir / "app/routes/v3.py").is_file())
+        self.assertTrue((self.project_dir / "app/routes/resources/v3/product.py").is_file())
+        self.assertTrue(
+            (self.project_dir / "app/schemas/requests/v3/product/product_create_schema.py").is_file()
+        )
+        v3_routes = (self.project_dir / "app/routes/v3.py").read_text()
+        api_routes = (self.project_dir / "app/routes/api.py").read_text()
+        self.assertIn("product_router", v3_routes)
+        self.assertIn("v3_router", api_routes)
+
+        v3_import = self.run_python(
+            """
+from app.main import app
+paths = app.openapi()['paths']
+assert '/api/v1/products/' in paths
+assert '/api/v3/products/' in paths
+            """
+        )
+        self.assertEqual(v3_import.returncode, 0, v3_import.stdout + v3_import.stderr)
+
+        invalid_version = self.run_fastie(
+            "make",
+            "resource",
+            "ProductV4",
+            "--version",
+            "version4",
+        )
+        self.assertNotEqual(invalid_version.returncode, 0)
+        self.assertIn("must match vN", invalid_version.stdout + invalid_version.stderr)
+
     def test_generated_app_exposes_standard_oauth2_and_health_routes(self):
         result = self.run_python(
             """
 from app.main import app
+from app.routes.api import v1_router, v2_router
 
 paths = app.openapi()['paths']
 assert '/api/v1/auth/token' in paths
@@ -282,6 +342,11 @@ assert '/api/v1/auth/refresh' in paths
 assert '/api/v1/auth/logout' in paths
 assert '/healthz' in paths
 assert '/readyz' in paths
+assert app.docs_url == '/docs'
+assert app.redoc_url == '/redoc'
+assert app.openapi_url == '/openapi.json'
+assert v1_router.prefix == '/v1'
+assert v2_router.prefix == '/v2'
 security = paths['/api/v1/user/']['get']['security']
 assert security and security[0].get('OAuth2PasswordBearer') == []
             """

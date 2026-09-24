@@ -15,11 +15,15 @@ def unique_imports(fields):
     }
     return '\n'.join(sorted(imports))
 %>
+<%
+request_schema_root = "app.schemas.requests" if not schema_version else f"app.schemas.requests.{schema_version}"
+response_schema_root = "app.schemas.responses" if not schema_version else f"app.schemas.responses.{schema_version}"
+%>
 ${unique_imports(fields)}
 from app.models.${to_snake_case(name)} import ${to_class_name(name)}
-from app.schemas.requests.${to_snake_case(name)}.${to_snake_case(name)}_create_schema import ${to_class_name(name)}CreateSchema
-from app.schemas.requests.${to_snake_case(name)}.${to_snake_case(name)}_update_schema import ${to_class_name(name)}UpdateSchema
-from app.schemas.responses.${to_snake_case(name)}.${to_snake_case(name)}_response_schema import ${to_class_name(name)}ResponseSchema
+from ${request_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_create_schema import ${to_class_name(name)}CreateSchema
+from ${request_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_update_schema import ${to_class_name(name)}UpdateSchema
+from ${response_schema_root}.${to_snake_case(name)}.${to_snake_case(name)}_response_schema import ${to_class_name(name)}ResponseSchema
 
 
 router = APIRouter()
